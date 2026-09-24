@@ -51,7 +51,11 @@ class UbeeFake:
     def send(self, request: HttpRequest) -> str:
         self.sent.append(request)
         if request.kind == "login":
-            self.logged_in = dict(request.fields).get("loginPassword") == self.password
+            ok = dict(request.fields).get("loginPassword") == self.password
+            # The session is global: a wrong password does not end someone else's session,
+            # but the answer to the POST is the login form again.
+            self.logged_in = self.logged_in or ok
+            return ubee_page("UbeeSysInfo.asp" if ok else "login.asp")
         return ""
 
 

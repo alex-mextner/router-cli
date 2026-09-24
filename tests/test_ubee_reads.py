@@ -177,6 +177,13 @@ def test_wrong_password() -> None:
         driver(fake).devices()
 
 
+def test_wrong_password_detected_even_while_someone_else_is_logged_in() -> None:
+    fake = UbeeFake(logged_in=True, password="other")
+    with pytest.raises(NotLoggedInError, match="rejected"):
+        driver(fake).login("admin", "secret")
+    driver(fake).login("admin", "other")  # the right one passes
+
+
 def test_never_fetches_logout() -> None:
     fake = UbeeFake()
     d = driver(fake)

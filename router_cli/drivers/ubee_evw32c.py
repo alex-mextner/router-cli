@@ -155,7 +155,11 @@ class UbeeEVW32C(BaseDriver):
         return None
 
     def login(self, user: str, password: str) -> None:
-        self.transport.send(
+        # The answer is what tells a wrong password apart: a good login redirects to the
+        # system page, a bad one lands on the login form again. Checking the session alone
+        # would not do, because the session is global — with Home Assistant logged in, the
+        # admin pages are readable whatever password was just tried.
+        response = self.transport.send(
             HttpRequest(
                 "POST",
                 LOGIN_PATH,
@@ -164,7 +168,7 @@ class UbeeEVW32C(BaseDriver):
                 secret_fields=frozenset({"loginPassword"}),
             )
         )
-        if not self.session_active():
+        if self._is_login(response) or not self.session_active():
             raise NotLoggedInError(
                 what="the router rejected the login",
                 why="after POST /goform/login the admin pages still show the login form",
