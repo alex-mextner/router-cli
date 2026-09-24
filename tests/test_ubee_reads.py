@@ -113,7 +113,7 @@ def test_areas_read() -> None:
         "auto",
     )
     assert wifi["psk"] == "<hidden>"
-    assert d.read_area("wifi-2g", show_secrets=True)["psk"] == "fixture-psk-12345"
+    assert d.read_area("wifi-2g", show_secrets=True)["psk"] == "testtesttest"
     assert d.read_area("wifi-5g")["mode"] == "a/n/ac"
     assert d.read_area("firewall")["level"] == "low"
     assert d.read_area("options")["upnp"] is True

@@ -314,6 +314,7 @@ AREAS: dict[str, Area] = {
                 ),
             ),
             apply=(("ApplyAdvDMZAction", "1"),),
+            destructive=True,  # exposes a LAN host to the whole internet
         ),
         Area(
             "firewall",

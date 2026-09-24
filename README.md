@@ -57,8 +57,8 @@ Content-Type: application/x-www-form-urlencoded
   StaticLeaseStatusFlag=0
 ```
 
-Changes that can cut you off (Wi-Fi, LAN address, DHCP off, port forwards, reboot) also
-need `--yes`. Passwords and keys are redacted in every output unless `--show-secrets`.
+Changes that can cut you off or expose a device (Wi-Fi, LAN address, DHCP off, port
+forwards, DMZ, reboot) also need `--yes`. Passwords and keys are redacted in every output unless `--show-secrets`.
 
 **Things you must never do by accident, you cannot do at all.** No request ever touches a
 path containing `logout`, `reboot`, `reset`, `restore`, `factory`, `default`, `upgrade` or
@@ -133,7 +133,7 @@ it.
 router inventory update [--resolve]      # poll; --resolve adds reverse-DNS/mDNS names
 router inventory list --json [--filter recent|active|all|reserved|new] [--since 24h]
 router scan --all-online --json          # probe popular web ports on every online device
-router scan --ip 192.168.0.26
+router scan --ip 192.168.0.50
 router alias 02:00:00:00:00:05 --name "3D printer" --icon mdi:printer-3d
 ```
 
@@ -141,15 +141,15 @@ router alias 02:00:00:00:00:05 --name "3D printer" --icon mdi:printer-3d
 
 ```json
 {
-  "generated_at": "2026-09-24T18:27:38+00:00",
+  "generated_at": "2026-01-01T12:00:00+00:00",
   "router": {"driver": "ubee_evw32c", "model": "EVW32C-0N", "host": "192.168.0.1"},
   "devices": [{
-    "mac": "02:00:00:00:00:05", "ip": "192.168.0.26", "hostname": "3D printer",
-    "names": ["3D printer"], "vendor": "AMPAK", "random_mac": false, "interface": "lan",
-    "online": true, "first_seen": "...", "last_seen": "...", "reserved_ip": "192.168.0.26",
-    "ip_history": [{"ip": "192.168.0.26", "first_seen": "...", "last_seen": "..."}],
+    "mac": "02:00:00:00:00:05", "ip": "192.168.0.50", "hostname": "3D printer",
+    "names": ["3D printer"], "vendor": "Raspberry Pi Trading", "random_mac": false, "interface": "lan",
+    "online": true, "first_seen": "...", "last_seen": "...", "reserved_ip": "192.168.0.50",
+    "ip_history": [{"ip": "192.168.0.50", "first_seen": "...", "last_seen": "..."}],
     "icon": "mdi:printer-3d",
-    "services": [{"port": 7125, "scheme": "http", "url": "http://192.168.0.26:7125/",
+    "services": [{"port": 7125, "scheme": "http", "url": "http://192.168.0.50:7125/",
                   "title": "Moonraker", "server": "TornadoServer/6.2",
                   "favicon_data_url": null, "checked_at": "..."}]
   }]
@@ -188,9 +188,10 @@ Drivers log in again by themselves when the session is gone. On the Ubee the adm
 global, so if anything else (Home Assistant's ubee integration logs in every 30 s) is logged
 in, reads work without any stored credentials.
 
-Exotic logins (captchas, JavaScript-computed tokens) can be handled by capturing a session with
-a real browser (e.g. `agent-browser` or Chrome) and handing the cookie to a driver; neither
-supported family needs that — the Ubee is a plain form login, OpenWrt a JSON-RPC one.
+Routers with exotic logins (captchas, JavaScript-computed tokens) could be supported by
+capturing the session with a real browser (e.g. `agent-browser` or Chrome) — that would be the
+way to write such a driver. Neither supported family needs it: the Ubee is a plain form login,
+OpenWrt a JSON-RPC one.
 
 ## Supported routers
 

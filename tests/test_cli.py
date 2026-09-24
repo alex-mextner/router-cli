@@ -106,7 +106,7 @@ def test_read_commands_json(fake_router: UbeeFake, capsys: pytest.CaptureFixture
         assert code == 0, argv
         json.loads(out)
     code, out = run(capsys, "wifi", "--json")
-    assert "fixture-psk-12345" not in out
+    assert "testtesttest" not in out
 
 
 def test_inventory_update_and_list(
@@ -131,7 +131,7 @@ def test_raw_get_masks_secrets(fake_router: UbeeFake, capsys: pytest.CaptureFixt
     _, out = run(capsys, "raw", "get", "UbeeParentalBasic.asp")
     assert "changeme" not in out and "<redacted>" in out
     _, out = run(capsys, "raw", "get", "UbeeWlanSecurity.asp")
-    assert "fixture-psk-12345" not in out
+    assert "testtesttest" not in out
     _, out = run(capsys, "raw", "get", "UbeeNasControl.asp")
     assert "fixture-nas-pass" not in out
 

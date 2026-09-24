@@ -78,4 +78,4 @@ def test_json_vars() -> None:
     page = htmlform.parse(ubee_page("UbeeWlanSecurity.asp"))
     state = page.json_vars["web_item_data_wireless_setup_jsonData"]
     assert state["wireless_2g_auth_mode"] == 4
-    assert state["wireless_2g_sec_wpap_preshare_key"] == "fixture-psk-12345"
+    assert state["wireless_2g_sec_wpap_preshare_key"] == "testtesttest"
