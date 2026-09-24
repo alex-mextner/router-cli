@@ -128,6 +128,9 @@ def test_hand_written_file_is_read(config_dir: Path) -> None:
 
 def test_group_readable_file_is_refused(config_dir: Path) -> None:
     credentials.store("192.168.0.1", "ubee_evw32c", "admin", "pw")
+    # codeql[py/overly-permissive-file]
+    # Justified: the test deliberately loosens a throwaway temp file to prove the tool
+    # refuses a group/world-readable credentials file.
     os.chmod(credentials.path(), 0o644)
     with pytest.raises(UsageError, match="readable by other users"):
         credentials.load_file()
