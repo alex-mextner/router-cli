@@ -1,0 +1,80 @@
+{
+  "_comment": "Synthetic rpcd answers, shaped like OpenWrt 23.05 (system board/info, network.interface dump, luci-rpc, iwinfo, uci).",
+  "board": {
+    "kernel": "5.15.150",
+    "hostname": "OpenWrt",
+    "system": "ARMv8 Processor rev 4",
+    "model": "Test Router AX1800",
+    "board_name": "test,ax1800",
+    "release": {
+      "distribution": "OpenWrt",
+      "version": "23.05.3",
+      "revision": "r23809-234f1a2efa",
+      "target": "mediatek/filogic",
+      "description": "OpenWrt 23.05.3 r23809-234f1a2efa"
+    }
+  },
+  "info": {
+    "localtime": 1767225600,
+    "uptime": 93784,
+    "load": [1024, 2048, 512],
+    "memory": {"total": 262144000, "free": 131072000}
+  },
+  "interfaces": {
+    "interface": [
+      {
+        "interface": "lan",
+        "up": true,
+        "ipv4-address": [{"address": "10.0.0.1", "mask": 24}],
+        "route": [],
+        "dns-server": []
+      },
+      {
+        "interface": "wan",
+        "up": true,
+        "ipv4-address": [{"address": "192.0.2.20", "mask": 24}],
+        "route": [{"target": "0.0.0.0", "mask": 0, "nexthop": "192.0.2.1"}],
+        "dns-server": ["198.51.100.53"],
+        "data": {"leasetime": 86400}
+      }
+    ]
+  },
+  "hints": {
+    "02:00:00:00:00:21": {"ipaddrs": ["10.0.0.21"], "name": "nas"},
+    "02:00:00:00:00:22": {"ipaddrs": ["10.0.0.22"], "name": "phone"},
+    "02:00:00:00:00:23": {"ipaddrs": ["10.0.0.23"], "name": "tablet"}
+  },
+  "leases": {
+    "dhcp_leases": [
+      {"expires": 3600, "hostname": "nas", "macaddr": "02:00:00:00:00:21", "ipaddr": "10.0.0.21"},
+      {"expires": 1800, "hostname": "phone", "macaddr": "02:00:00:00:00:22", "ipaddr": "10.0.0.22"}
+    ],
+    "dhcp6_leases": []
+  },
+  "assoclist": {
+    "results": [
+      {"mac": "02:00:00:00:00:22", "signal": -48, "noise": -95, "inactive": 20, "connected_time": 3600, "rx": {"rate": 866700}, "tx": {"rate": 866700}},
+      {"mac": "02:00:00:00:00:23", "signal": -61, "noise": -95, "inactive": 40, "connected_time": 120, "rx": {"rate": 390000}, "tx": {"rate": 390000}}
+    ]
+  },
+  "uci": {
+    "dhcp": {
+      "lan": {".anonymous": false, ".type": "dhcp", ".name": "lan", "interface": "lan", "start": "100", "limit": "150", "leasetime": "12h"},
+      "cfg01": {".anonymous": true, ".type": "host", ".name": "cfg01", "name": "nas", "mac": "02:00:00:00:00:21", "ip": "10.0.0.21"}
+    },
+    "network": {
+      "lan": {".anonymous": false, ".type": "interface", ".name": "lan", "proto": "static", "ipaddr": "10.0.0.1", "netmask": "255.255.255.0"}
+    },
+    "firewall": {
+      "cfg0a": {".anonymous": true, ".type": "redirect", ".name": "cfg0a", "name": "https-nas", "target": "DNAT", "src": "wan", "dest": "lan", "proto": "tcp", "src_dport": "8443", "dest_ip": "10.0.0.21", "dest_port": "443"},
+      "cfg02": {".anonymous": true, ".type": "zone", ".name": "cfg02", "name": "lan", "input": "ACCEPT"}
+    },
+    "wireless": {
+      "radio0": {".anonymous": false, ".type": "wifi-device", ".name": "radio0", "band": "5g", "channel": "36"},
+      "default_radio0": {".anonymous": false, ".type": "wifi-iface", ".name": "default_radio0", "device": "radio0", "mode": "ap", "ssid": "TESTNET", "encryption": "psk2", "key": "fixture-wifi-key"}
+    },
+    "system": {
+      "cfg01": {".anonymous": true, ".type": "system", ".name": "cfg01", "hostname": "OpenWrt", "timezone": "UTC"}
+    }
+  }
+}

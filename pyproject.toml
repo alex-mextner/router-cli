@@ -1,0 +1,55 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "router-cli"
+version = "0.1.0"
+description = "The home router from the command line: devices, leases, static IPs, Wi-Fi, port forwarding, firewall, DOCSIS status and a device inventory with web-UI discovery — for Ubee EVW32C cable gateways and OpenWrt, with --json for agents and --dry-run for every write."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Alex Mextner" }]
+keywords = ["router", "cli", "ubee", "openwrt", "home-assistant", "dhcp", "agent-tool"]
+
+# ZERO required third-party runtime deps. HTTP is urllib, HTML is html.parser, storage is
+# sqlite3, the keyring is the OS's own tool (secret-tool / security / advapi32). The tool
+# installs in seconds and runs on a router-adjacent box that has nothing but Python.
+dependencies = []
+
+[project.optional-dependencies]
+test = ["pytest==9.1.1"]
+dev = ["pytest==9.1.1", "ruff==0.16.8", "mypy==2.3.1"]
+
+[project.scripts]
+router = "router_cli.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/alex-mextner/router-cli"
+Issues = "https://github.com/alex-mextner/router-cli/issues"
+
+[tool.setuptools.packages.find]
+include = ["router_cli*"]
+
+[tool.setuptools.package-data]
+router_cli = ["data/*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+ignore = ["B008"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_unreachable = true
+# `_colorize` is CPython's own, present from 3.13 on but absent from the 3.11 typeshed.
+[[tool.mypy.overrides]]
+module = ["_colorize"]
+ignore_missing_imports = true

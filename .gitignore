@@ -1,0 +1,26 @@
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+build/
+dist/
+.DS_Store
+
+# Machine-local tooling state written by `rig apply`. It embeds absolute paths from the
+# machine that generated it, so committing it breaks every other checkout (and the sibling
+# CLIs keep it untracked for the same reason). Re-create it with `rig apply commit`.
+.claude/
+.codex/
+.haft/
+.serena/
+
+# Backup artifact written by `rig apply` when it overwrites a rig-managed file in place —
+# never meant to be committed.
+*.rig-bak-*
+
+# local tool state
+.venv/
+uv-cache/
