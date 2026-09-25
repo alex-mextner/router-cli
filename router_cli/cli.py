@@ -58,7 +58,7 @@ _GETTING_STARTED = (
     ("router login", "store the admin password (prompted)"),
     ("router doctor", "check everything"),
     ("router devices", "who is connected"),
-    ("router reserve <mac> <ip> --dry-run", "pin an IP; see the exact request"),
+    ("router reserve <device> [ip] --dry-run", "pin an IP; see the exact request"),
     ("router inventory update", "poll into the local device DB"),
     ("router inventory list --json", "the Home Assistant / agent contract"),
 )

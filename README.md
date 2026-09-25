@@ -81,9 +81,22 @@ once.
 ```bash
 router devices --json      # mac, ip, hostname, interface (wifi/lan), band, rssi, online
 router leases              # kind: dynamic | reservation | static (device-side static IP)
-router reserve <mac> <ip> [--name N] [--dry-run]
-router unreserve <mac> [--dry-run]
+router reserve <device> [ip] [--name N] [--dry-run]   # no ip: pin its current address
+router unreserve <device> [--dry-run]
 ```
+
+Wherever a command wants a device (`reserve`, `unreserve`, `alias`, `scan --ip`, `oui`,
+`wifi-acl add|rm`, `filter mac add|rm`, `lists add|rm` of a MAC list) it takes any of:
+
+- a MAC in any common spelling: `aa:bb:cc:dd:ee:ff`, `AA-BB-CC-DD-EE-FF`, `aa_bb_cc_dd_ee_ff`,
+  `aabb.ccdd.eeff`, `aabbccddeeff`, any case;
+- a current IP (`192.168.0.25`: the device the inventory has at that address);
+- a name — the local alias, the router's host name or any name the inventory has seen —
+  case-insensitive, exact match first, then a unique prefix (`router reserve print`). An
+  ambiguous name is an error that lists the candidates.
+
+Names and IPs are looked up in the local inventory (`router inventory update` fills it), never
+on the router.
 
 On the Ubee a static lease has no name field; `--name` is kept as a local alias in the
 inventory instead (and shows up as the device's `hostname` there).
@@ -137,9 +150,10 @@ it.
 
 ```bash
 router inventory update [--resolve]      # poll; --resolve adds reverse-DNS/mDNS names
+                                         # (concurrent updates wait and share one poll)
 router inventory list --json [--filter recent|active|all|reserved|new] [--since 24h]
 router scan --all-online --json          # probe popular web ports on every online device
-router scan --ip 192.168.0.50
+router scan --ip 192.168.0.50            # or --ip <mac or name>
 router alias 02:00:00:00:00:05 --name "3D printer" --icon mdi:printer-3d
 ```
 

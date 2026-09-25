@@ -18,9 +18,10 @@ _MAC_HEX = re.compile(r"[0-9a-fA-F]")
 
 
 def normalize_mac(text: str) -> str:
-    """Accept aa:bb:cc:dd:ee:ff, AA-BB-..., aabb.ccdd.eeff or aabbccddeeff; return aa:bb:..."""
+    """Accept aa:bb:cc:dd:ee:ff, AA-BB-..., aa_bb_..., aabb.ccdd.eeff or aabbccddeeff (any
+    case); return aa:bb:cc:dd:ee:ff."""
     digits = "".join(_MAC_HEX.findall(text))
-    stripped = re.sub(r"[\s:.\-]", "", text)
+    stripped = re.sub(r"[\s:.\-_]", "", text)
     if len(digits) != 12 or len(stripped) != 12:
         raise UsageError(
             what=f"{text!r} is not a MAC address",
@@ -46,6 +47,14 @@ def is_random_mac(mac: str) -> bool:
     except (UsageError, ValueError):
         return False
     return bool(first & 0x02)
+
+
+def is_ipv4(text: str) -> bool:
+    try:
+        ipaddress.IPv4Address(text.strip())
+    except ValueError:
+        return False
+    return True
 
 
 def validate_ipv4(text: str) -> str:

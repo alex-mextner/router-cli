@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 from collections.abc import Callable
 
+from .. import device_selector
 from .._errors import unsupported
 from ..drivers.base import BaseDriver, Capability
 from . import _common as C
@@ -34,6 +35,7 @@ def make(
     summary: str,
     resolver: ListResolver,
     extra_args: Callable[[argparse.ArgumentParser], None] | None = None,
+    value_metavar: str | None = None,
 ) -> Callable[[list[str]], int]:
     def run(argv: list[str]) -> int:
         if not argv or argv[0] not in (*VERBS, "-h", "--help"):
@@ -46,7 +48,7 @@ def make(
             if extra_args:
                 extra_args(p)
             if verb in ("add", "rm"):
-                p.add_argument("value")
+                p.add_argument("value", metavar=value_metavar)
             if verb != "show":
                 C.add_write_args(p)
         args = top.parse_args(argv)
@@ -67,5 +69,9 @@ def run_list(args: argparse.Namespace, resolver: ListResolver) -> int:
             print("\n".join(items) if items else f"({list_name} is empty)")
         return 0
     action = {"add": "add", "rm": "remove", "clear": "clear"}[args.verb]
-    plan = driver.plan_list_edit(list_name, action, getattr(args, "value", None))
+    value = getattr(args, "value", None)
+    if value and driver.list_is_mac(list_name):
+        # MAC lists take any device selector: a MAC in any format, a current IP or a name.
+        value = device_selector.resolve_mac(value)
+    plan = driver.plan_list_edit(list_name, action, value)
     return C.run_plan(driver, plan, args, after=lambda: driver.list_items(list_name))

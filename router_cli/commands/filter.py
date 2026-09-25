@@ -11,8 +11,14 @@ SUMMARY = "IP-range, port and MAC filters (filter ip|port|mac ...)"
 _ip = _area.make("filter ip", "IP range filters (10 rules)", _area.fixed("ip-filter"))
 _port = _area.make("filter port", "outbound port filters (10 rules)", _area.fixed("port-filter"))
 _mac = _lists.make(
-    "filter mac", "MAC addresses blocked from the internet", _lists.fixed("mac-filter")
+    "filter mac",
+    "MAC addresses blocked from the internet",
+    _lists.fixed("mac-filter"),
+    value_metavar="DEVICE",
 )
+
+# `router filter <kind> ...` dispatches to these (shell completion walks them too).
+SUBCOMMANDS = {"ip": _ip, "port": _port, "mac": _mac}
 
 USAGE = """\
 usage: router filter ip   [show|keys|set rule1_start=20 rule1_end=30 rule1_enabled=yes]
@@ -26,7 +32,7 @@ def run(argv: list[str]) -> int:
         print(USAGE)
         return 0
     kind, rest = argv[0], argv[1:]
-    runner = {"ip": _ip, "port": _port, "mac": _mac}.get(kind)
+    runner = SUBCOMMANDS.get(kind)
     if runner is None:
         raise UsageError(what=f"unknown filter kind {kind!r}", why="", how="use ip, port or mac")
     return runner(rest)

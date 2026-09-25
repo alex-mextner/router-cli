@@ -40,7 +40,7 @@ def run(argv: list[str]) -> int:
     for verb in ("add", "rm", "clear"):
         p = sub.add_parser(verb)
         if verb != "clear":
-            p.add_argument("value", help="MAC address")
+            p.add_argument("value", metavar="DEVICE", help="MAC (any format), IP or device name")
         band_arg(p)
         C.add_router_args(p)
         C.add_write_args(p)

@@ -2,6 +2,7 @@
 
     router scan --all-online --json      every device online in the last inventory poll
     router scan --ip 192.168.0.25        one (or several: repeat --ip) address
+    router scan --ip printer             ... or a MAC / device name from the inventory
 
 Results are saved per MAC in the inventory (``services`` in `router inventory list`).
 With ``--all-online`` and an empty inventory, the router is polled first.
@@ -11,9 +12,9 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+from .. import device_selector
 from .._errors import UsageError
 from ..inventory import Inventory
-from ..models import validate_ipv4
 from ..scan import DEFAULT_PORTS, scan_hosts
 from . import _common as C
 
@@ -34,7 +35,12 @@ def _ports(text: str | None) -> tuple[int, ...]:
 def run(argv: list[str]) -> int:
     p = C.parser(NAME, SUMMARY)
     target = p.add_mutually_exclusive_group(required=True)
-    target.add_argument("--ip", action="append", help="address to scan (repeatable)")
+    target.add_argument(
+        "--ip",
+        action="append",
+        metavar="DEVICE",
+        help="address, MAC or device name to scan (repeatable)",
+    )
     target.add_argument("--all-online", action="store_true", help="every online inventory device")
     p.add_argument("--ports", help="comma-separated ports (default: the built-in web port list)")
     p.add_argument("--connect-timeout", type=float, default=0.6)
@@ -52,7 +58,7 @@ def run(argv: list[str]) -> int:
                 update(C.open_driver(args))
             targets: list[tuple[str, str | None]] = [(ip, mac) for mac, ip in inv.online_targets()]
         else:
-            targets = [(validate_ipv4(ip), inv.mac_for_ip(ip)) for ip in args.ip]
+            targets = [device_selector.resolve_target(sel, inv) for sel in args.ip]
         results = scan_hosts(
             targets,
             ports=_ports(args.ports),

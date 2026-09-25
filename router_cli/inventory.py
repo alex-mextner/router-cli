@@ -287,6 +287,44 @@ class Inventory:
         ).fetchone()
         return str(row["mac"]) if row else None
 
+    def ip_for_mac(self, mac: str) -> str | None:
+        row = self.db.execute(
+            "SELECT ip FROM devices WHERE mac = ?", (normalize_mac(mac),)
+        ).fetchone()
+        return str(row["ip"]) if row and row["ip"] else None
+
+    def selector_rows(self) -> list[dict[str, Any]]:
+        """Every device with every name it answers to — what device selectors match against.
+
+        ``names`` holds the local alias, the current router name and every name ever seen
+        (router, reservation, reverse DNS), de-duplicated, alias first.
+        """
+        out: list[dict[str, Any]] = []
+        rows = self.db.execute(
+            "SELECT mac, ip, hostname, alias_name, online, last_seen FROM devices "
+            "ORDER BY online DESC, last_seen DESC, mac"
+        ).fetchall()
+        for row in rows:
+            names: list[str] = []
+            for name in (row["alias_name"], row["hostname"]):
+                if name and name not in names:
+                    names.append(str(name))
+            for r in self.db.execute(
+                "SELECT name FROM names WHERE mac = ? ORDER BY last_seen DESC, name",
+                (row["mac"],),
+            ):
+                if r["name"] not in names:
+                    names.append(str(r["name"]))
+            out.append(
+                {
+                    "mac": str(row["mac"]),
+                    "ip": row["ip"],
+                    "names": names,
+                    "online": bool(row["online"]),
+                }
+            )
+        return out
+
     def online_targets(self) -> list[tuple[str, str]]:
         rows = self.db.execute(
             "SELECT mac, ip FROM devices WHERE online = 1 AND ip IS NOT NULL ORDER BY ip"
