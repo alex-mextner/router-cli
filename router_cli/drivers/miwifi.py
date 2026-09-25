@@ -41,7 +41,9 @@ from ..http import HttpRequest, Transport
 from ..models import Device, RouterInfo, is_mac, normalize_mac
 from .base import BaseDriver, Capability
 
-KEY = "a2ffa5c9be07488bbb04a3a47d3c5f6a"
+# Not a secret: the fixed salt every Xiaomi router's web UI uses to hash the password before
+# sending it (it ships in the firmware's public JavaScript and in open-source integrations).
+KEY = "a2ffa5c9be07488bbb04a3a47d3c5f6a"  # gitleaks:allow
 INIT_INFO = "/cgi-bin/luci/api/xqsystem/init_info"
 LOGIN = "/cgi-bin/luci/api/xqsystem/login"
 BANDS = {0: None, 1: "2.4", 2: "5", 3: "2.4", 6: "5", 7: "6"}
