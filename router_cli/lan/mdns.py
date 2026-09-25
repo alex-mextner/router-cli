@@ -215,10 +215,10 @@ class _Collector:
         self.by_source.setdefault(src, []).extend(records)
 
 
-def _open_socket(own_ip: str | None) -> socket.socket:
+def _open_socket(own_ip: str) -> socket.socket:
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    sock.bind(("", 0))
+    sock.bind((own_ip, 0))  # the LAN interface only: answers come back to this address
     sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 255)
     if own_ip:
         with contextlib.suppress(OSError):
@@ -253,7 +253,7 @@ def _send(sock: socket.socket, packet: bytes, dest: tuple[str, int]) -> None:
 
 def browse(
     candidates: list[str],
-    own_ip: str | None = None,
+    own_ip: str,
     timeout: float = 4.5,
     exclude: frozenset[str] = frozenset(),
 ) -> dict[str, MdnsHost]:

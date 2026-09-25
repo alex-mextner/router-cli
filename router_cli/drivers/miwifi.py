@@ -87,6 +87,10 @@ def _mac(value: Any) -> str | None:
 
 def password_hash(password: str, nonce: str, sha256: bool) -> str:
     h = hashlib.sha256 if sha256 else hashlib.sha1
+    # codeql[py/weak-sensitive-data-hashing]
+    # Justified: this is not storing a password, it is the Xiaomi login protocol itself: the
+    # router accepts only H(nonce + H(password + KEY)) with H = SHA-256 (or SHA-1 on old
+    # firmware). The result goes over the LAN once and is never stored.
     return h((nonce + h((password + KEY).encode()).hexdigest()).encode()).hexdigest()
 
 

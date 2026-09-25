@@ -250,7 +250,7 @@ def discover(args: Any) -> dict[str, Any]:
         mdns_hosts.update(mdns.browse(candidates, net.ip, exclude=frozenset(protected)))
 
     def run_netbios() -> None:
-        nb.update(netbios.query([ip for ip in candidates if ip not in protected]))
+        nb.update(netbios.query([ip for ip in candidates if ip not in protected], net.ip))
 
     later = []
     if not args.no_mdns:

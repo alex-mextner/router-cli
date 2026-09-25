@@ -100,11 +100,11 @@ def parse_answer(data: bytes) -> SsdpAnswer | None:
     )
 
 
-def search(own_ip: str | None = None, timeout: float = 3.0) -> dict[str, SsdpHost]:
+def search(own_ip: str, timeout: float = 3.0) -> dict[str, SsdpHost]:
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
     hosts: dict[str, SsdpHost] = {}
     try:
-        sock.bind(("", 0))
+        sock.bind((own_ip, 0))  # the LAN interface only: answers come back to this address
         sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 2)
         if own_ip:
             with contextlib.suppress(OSError):

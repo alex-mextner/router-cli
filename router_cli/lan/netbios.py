@@ -50,14 +50,14 @@ def parse_response(data: bytes) -> tuple[list[str], str | None]:
         return [], None
 
 
-def query(targets: list[str], timeout: float = 1.5) -> dict[str, list[str]]:
+def query(targets: list[str], own_ip: str, timeout: float = 1.5) -> dict[str, list[str]]:
     """{ip: [names]} for every target that answered."""
     out: dict[str, list[str]] = {}
     if not targets:
         return out
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
-        sock.bind(("", 0))
+        sock.bind((own_ip, 0))  # the LAN interface only: answers come back to this address
         sock.setblocking(False)
         tid = random.randint(1, 0xFFFF)
         for ip in targets:
