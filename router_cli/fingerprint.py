@@ -25,6 +25,7 @@ from ._vendor.netprint import (
     SsdpDevice,
     classify,
 )
+from .ha_registry import normalize_id
 
 WIFI_CATEGORIES = frozenset(
     {"phone", "tablet", "watch", "iot-plug", "iot-light", "iot-sensor", "ir-remote", "esp-diy"}
@@ -97,6 +98,10 @@ def build_signals(
     for key, value in (facts.get("miwifi_info") or {}).items():
         if value is not None and value != "":
             extra[f"miwifi.{key}"] = str(value)
+    for key in ("locale", "mode", "link_type"):
+        value = (facts.get("miwifi_topo") or {}).get(key)
+        if value not in (None, ""):
+            extra[f"miwifi.{key}"] = str(value)
     client = facts.get("miwifi") or {}
     if client.get("is_ap"):
         extra["miwifi.is_ap"] = "1"
@@ -104,6 +109,24 @@ def build_signals(
         extra["miwifi.name"] = str(client["name"])
     if client.get("connection") == "wifi":
         extra["wifi"] = "1"
+    ha = facts.get("ha") or {}
+    if ha.get("name"):
+        extra["name"] = str(ha["name"])
+    for key in ("model", "manufacturer", "title", "model_id", "sw_version"):
+        if ha.get(key):
+            extra[f"ha.{key}"] = str(ha[key])
+    if ha.get("domains"):
+        extra["ha.domain"] = " ".join(ha["domains"])
+    for key in ("software_version", "hostname", "state"):
+        value = (facts.get("moonraker") or {}).get(key)
+        if value:
+            extra[f"moonraker.{key}"] = str(value)
+    banner = (facts.get("banners") or {}).get("22")
+    if banner:
+        extra["ssh.banner"] = str(banner)
+    for key, value in (facts.get("host") or {}).items():
+        if value:
+            extra[str(key)] = str(value)
     all_names = list(names)
     for extra_name in mdns_facts.get("hostnames") or []:
         if extra_name not in all_names:
@@ -125,6 +148,24 @@ def build_signals(
 
 def classify_device(signals: Signals, alias: str | None = None) -> Result:
     return classify(signals, alias=alias)
+
+
+ID_TXT_KEYS = frozenset({"id", "deviceid", "device_id", "uuid", "udn"})
+
+
+def device_ids(facts: dict[str, Any]) -> set[str]:
+    """Ids the device announced about itself (mDNS TXT ``id``/``deviceId``, SSDP UDN),
+    normalized for matching against Home Assistant's registry identifiers."""
+    raw: list[Any] = []
+    for svc in (facts.get("mdns") or {}).get("services") or []:
+        for key, value in (svc.get("txt") or {}).items():
+            if str(key).lower() in ID_TXT_KEYS:
+                raw.append(value)
+    for dev in (facts.get("ssdp") or {}).get("devices") or []:
+        usn = str(dev.get("usn") or "")
+        if usn.lower().startswith("uuid:"):
+            raw.append(usn.split("::", 1)[0])
+    return {nid for nid in (normalize_id(v) for v in raw) if nid}
 
 
 def connection(
@@ -161,6 +202,13 @@ def connection(
         return out
     if net.get("gateway") or net.get("gateway_iface"):
         out.update(type="wired")
+        return out
+    topo = facts.get("miwifi_topo") or {}
+    if topo.get("link_type") in ("wired", "wireless") or topo.get("root"):
+        # a mesh satellite's backhaul as its root reports it; the root of an AP-mode mesh
+        # is cabled to the main router
+        wired = topo.get("root") or topo.get("link_type") == "wired"
+        out.update(type="wired" if wired else "wifi", source="miwifi")
         return out
     if random_mac or result.category in WIFI_CATEGORIES or WIFI_VENDORS.search(vendor or ""):
         out["type"] = "wifi"

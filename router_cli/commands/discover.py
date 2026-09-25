@@ -37,14 +37,15 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from .. import credentials, ha_registry
+from .. import credentials, fingerprint, ha_registry
 from .._errors import RouterCliError
+from .._vendor.netprint import MdnsService, Signals, SsdpDevice, classify
 from ..config import db_path
-from ..drivers.miwifi import MiClient, MiWiFi
-from ..http import HttpTransport, normalize_base
+from ..drivers.miwifi import TOPO_GRAPH, MiClient, MiWiFi, parse_mesh_nodes
+from ..http import HttpTransport, is_lan_host, normalize_base, unverified_tls_context
 from ..inventory import Inventory, Sighting, now_iso, to_epoch
 from ..lan import mdns, netbios, netinfo, ssdp, sweep
-from ..scan import check_service
+from ..scan import DEFAULT_PORTS, check_service, fingerprint_only_ports, scan_hosts
 from . import _common as C
 
 NAME = "discover"
@@ -99,8 +100,58 @@ def _stale(inv: Inventory, mac: str, source: str, max_age: int, now: int) -> boo
         return True
 
 
+def _https_json_get(
+    host: str, path: str, host_header: str | None = None, timeout: float = 3.0
+) -> Any:
+    """GET JSON over HTTPS from a LAN device (self-signed certificate: not verified).
+    ``host`` may be an IPv6 link-local address with its zone (``fe80::1%wlan0``)."""
+    if not is_lan_host(host):
+        return None
+    ctx = unverified_tls_context()  # a LAN device: self-signed certificate
+    conn = http.client.HTTPSConnection(host, 443, timeout=timeout, context=ctx)
+    headers = {"User-Agent": "router-cli discover"}
+    if host_header:
+        headers["Host"] = host_header
+    try:
+        # codeql[py/partial-ssrf]
+        # Justified: a fixed, read-only public API path on a LAN mesh node the sweep found.
+        conn.request("GET", path, headers=headers)
+        response = conn.getresponse()
+        if response.status != 200:
+            return None
+        return json.loads(response.read(256 * 1024).decode("utf-8", errors="replace"))
+    except (OSError, http.client.HTTPException, ValueError):
+        return None
+    finally:
+        conn.close()
+
+
+def link_local(mac: str, iface: str) -> str:
+    """The EUI-64 IPv6 link-local address a device derives from its MAC (``fe80::...%if``):
+    how to reach a node whose IPv4 address another device also answers for."""
+    octets = [int(x, 16) for x in mac.split(":")]
+    octets[0] ^= 0x02
+    eui = [*octets[:3], 0xFF, 0xFE, *octets[3:]]
+    groups = [f"{(eui[i] << 8) | eui[i + 1]:x}" for i in range(0, 8, 2)]
+    return f"fe80::{':'.join(groups)}%{iface}"
+
+
+def _miwifi_topo(host: str, via_link_local: bool = False) -> dict[str, Any] | None:
+    """The public ``topo_graph`` of a Xiaomi mesh node: its own placement ("locale"), name,
+    mode and, on the root, every satellite with its backhaul. Over IPv6 link-local the node's
+    nginx wants a local Host header."""
+    data = _https_json_get(host, TOPO_GRAPH, host_header="localhost" if via_link_local else None)
+    if not isinstance(data, dict) or not isinstance(data.get("graph"), dict):
+        return None
+    return data
+
+
 def _miwifi_info(ip: str) -> dict[str, Any] | None:
     data = _json_get(ip, 80, "/cgi-bin/luci/api/xqsystem/init_info")
+    return _info_fact(data)
+
+
+def _info_fact(data: Any) -> dict[str, Any] | None:
     if not isinstance(data, dict) or not str(data.get("model", "")).startswith("xiaomi.router"):
         return None
     return {
@@ -165,6 +216,81 @@ def _collect_miwifi(timeout: float = 8.0) -> tuple[str, list[MiClient], list[dic
                 driver.end_session()
     status = "ok" if not errors else ("partial: " if clients else "error: ") + "; ".join(errors)
     return status, list(clients.values()), nodes
+
+
+def _mdns_service(svc: dict[str, Any]) -> MdnsService:
+    return MdnsService(
+        type=str(svc.get("type") or ""),
+        name=svc.get("name"),
+        port=svc.get("port"),
+        txt={str(k): str(v) for k, v in (svc.get("txt") or {}).items()},
+    )
+
+
+def _ssdp_device(dev: dict[str, Any]) -> SsdpDevice:
+    return SsdpDevice(**{k: (str(dev[k]) if dev.get(k) else None) for k in fingerprint.SSDP_KEYS})
+
+
+def attribute(answer: Signals, candidates: list[str], vendors: dict[str, Any]) -> str | None:
+    """Which of the MACs sharing one IPv4 address sent ``answer`` (mDNS/SSDP data): the single
+    candidate whose brand (from its OUI and the rules) equals the brand the answer itself
+    names. None when the answer names no brand or several candidates fit."""
+    brand = classify(answer).brand
+    if not brand:
+        return None
+    fits = [
+        mac
+        for mac in candidates
+        if classify(Signals(mac=mac, vendor=vendors.get(mac))).brand == brand
+    ]
+    return fits[0] if len(fits) == 1 else None
+
+
+RESCAN_S = 6 * 3600  # the scan timer's period: a device that comes back is scanned sooner
+MAX_RESCAN = 4
+
+
+def _rescan_targets(
+    inv: Inventory, present: dict[str, str | None], excluded: set[str]
+) -> list[tuple[str, str]]:
+    """(ip, mac) of devices online now whose web UIs were never scanned or not in the last
+    ``RESCAN_S`` (a printer that was switched off when the scan timer ran), at most
+    ``MAX_RESCAN`` per run."""
+    now_t = int(time.time())
+    checked = {
+        str(r["mac"]): str(r["checked_at"] or "")
+        for r in inv.db.execute("SELECT mac, checked_at FROM scans")
+    }
+    out: list[tuple[str, str]] = []
+    for mac, ip in present.items():
+        if not ip or ip in excluded:
+            continue
+        with contextlib.suppress(ValueError):
+            if checked.get(mac) and now_t - to_epoch(checked[mac]) < RESCAN_S:
+                continue
+        out.append((ip, mac))
+    return sorted(out, key=lambda t: tuple(int(x) for x in t[0].split(".")))[:MAX_RESCAN]
+
+
+def _scan_returning(targets: list[tuple[str, str]], self_ip: str) -> int:
+    targets = [(ip, mac) for ip, mac in targets if ip != self_ip]
+    if not targets:
+        return 0
+    with Inventory() as inv:
+        known = {ip: inv.known_services(mac) for ip, mac in targets}
+    results = scan_hosts(
+        [(ip, mac) for ip, mac in targets],
+        ports=DEFAULT_PORTS,
+        extra_ports=fingerprint_only_ports(),
+        known=known,
+    )
+    at = datetime.now(UTC).replace(microsecond=0).isoformat()
+    with Inventory() as inv:
+        for r in results:
+            if r.mac:
+                services = [s.to_json() for s in r.services]
+                inv.save_scan(r.mac, r.ip, r.open_ports, services, at, r.banners)
+    return len(results)
 
 
 def _near(mac_a: str, mac_b: str, span: int = 16) -> bool:
@@ -298,17 +424,70 @@ def discover(args: Any) -> dict[str, Any]:
     for iface in own:
         present[iface.mac] = net.ip if iface.default else None
 
-    # names of mesh nodes (for connection.via_name)
-    node_names: dict[str, str] = {}
+    # Xiaomi mesh nodes: placement ("locale") and backhaul from the public topo_graph, hourly;
+    # a node whose IPv4 address another device answers for is asked over IPv6 link-local
+    # (every run: that answer is also how it is known to be online).
     with Inventory() as inv:
-        for node in mi_nodes:
-            node_names[node["mac"]] = str(node.get("name") or node["mac"])
-        for row in inv.db.execute("SELECT mac FROM discovery WHERE source = 'miwifi_info'"):
-            info = inv.fact(str(row["mac"]), "miwifi_info") or {}
-            node_names.setdefault(
-                str(row["mac"]),
-                str(info.get("routername") or info.get("display_name") or row["mac"]),
-            )
+        oui_vendor = {
+            str(r["mac"]): r["vendor"] for r in inv.db.execute("SELECT mac, vendor FROM devices")
+        }
+        known_nodes = {
+            str(r["mac"])
+            for r in inv.db.execute("SELECT mac FROM discovery WHERE source = 'miwifi_info'")
+        }
+        topo_jobs: list[tuple[str, str, bool]] = []
+        if not args.no_miwifi:
+            for nmac in sorted(known_nodes):
+                nip = present.get(nmac)
+                if nip and nip not in conflicted and nip not in protected:
+                    if _stale(inv, nmac, "miwifi_topo", 3600, now_t):
+                        topo_jobs.append((nmac, nip, False))
+                elif not nip or nip in conflicted:
+                    topo_jobs.append((nmac, link_local(nmac, net.iface), True))
+        stored_topo = {m: inv.fact(m, "miwifi_topo") or {} for m in known_nodes}
+        stored_info = {m: inv.fact(m, "miwifi_info") or {} for m in known_nodes}
+    topo_facts: dict[str, dict[str, Any]] = {}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+        topo_futures = {
+            pool.submit(_miwifi_topo, host, ll): (nmac, ll) for nmac, host, ll in topo_jobs
+        }
+        for future in concurrent.futures.as_completed(topo_futures):
+            nmac, ll = topo_futures[future]
+            topo = future.result()
+            if topo is None:
+                continue
+            if ll and nmac not in present:
+                present[nmac] = None  # alive, reached over IPv6; its IPv4 stays as recorded
+            graph_nodes = parse_mesh_nodes(topo)
+            if not graph_nodes:
+                continue
+            own_node = graph_nodes[0]
+            own_node["root"] = len(graph_nodes) > 1 or own_node.get("mode") == 2
+            topo_facts[nmac] = {k: v for k, v in own_node.items() if v is not None}
+            for leaf in graph_nodes[1:]:
+                leaf_ip = leaf.get("ip")
+                leaf_mac = leaf.get("mac") or (
+                    ip_mac.get(leaf_ip) if leaf_ip and leaf_ip not in conflicted else None
+                )
+                if leaf_mac:
+                    merged = topo_facts.setdefault(leaf_mac, {})
+                    for key, value in leaf.items():
+                        if value is not None and key not in ("root", "mac"):
+                            merged.setdefault(key, value)
+                    merged["root"] = False
+
+    # names of mesh nodes (for connection.via_name): the placement, else the router name
+    node_names: dict[str, str] = {}
+    for node in mi_nodes:
+        if node.get("mac"):
+            node_names[node["mac"]] = str(node.get("locale") or node.get("name") or node["mac"])
+    for nmac in known_nodes | set(topo_facts):
+        topo = topo_facts.get(nmac) or stored_topo.get(nmac) or {}
+        info = stored_info.get(nmac) or {}
+        node_names.setdefault(
+            nmac,
+            str(topo.get("locale") or info.get("routername") or info.get("display_name") or nmac),
+        )
 
     sightings: dict[str, Sighting] = {}
 
@@ -324,25 +503,42 @@ def discover(args: Any) -> dict[str, Any]:
     def mac_at(ip: str) -> str | None:
         return None if ip in conflicted else ip_mac.get(ip)
 
+    sharers: dict[str, set[str]] = {ip: set() for ip in conflicted}
+    for c in conflicts:
+        sharers.setdefault(c["ip"], set()).update(c["macs"])
+    for ip in conflicted:
+        sharers[ip].update(m for m in (first_macs.get(ip), ip_mac.get(ip)) if m)
+    for nmac, topo in topo_facts.items():
+        sight(nmac, nmac in present).facts["miwifi_topo"] = topo
+
+    def owner(ip: str, answer: Signals) -> str | None:
+        """The MAC that sent ``answer``: the plain ARP owner, or on a shared address the one
+        sharer whose own brand (from its OUI) is the brand the answer names (a Yandex Station
+        and a Xiaomi node on one address: the _yandexio answer is the Yandex's)."""
+        if ip not in conflicted:
+            return ip_mac.get(ip)
+        return attribute(answer, sorted(sharers.get(ip, set())), oui_vendor)
+
     for ip, ttl in pings.items():
         at_ip = mac_at(ip)
         if at_ip and ttl:
             sight(at_ip).facts["icmp"] = {"ttl": ttl}
     for ip, mhost in mdns_hosts.items():
-        at_ip = mac_at(ip)
-        if not at_ip or not (mhost.services or mhost.hostnames):
+        if not (mhost.services or mhost.hostnames):
+            continue
+        svc_json = [svc.to_json() for svc in mhost.services.values()][:30]
+        at_ip = owner(ip, Signals(mdns=[_mdns_service(s) for s in svc_json]))
+        if not at_ip:
             continue
         s = sight(at_ip, at_ip in present)
-        s.facts["mdns"] = {
-            "hostnames": mhost.hostnames[:6],
-            "services": [svc.to_json() for svc in mhost.services.values()][:30],
-        }
+        s.facts["mdns"] = {"hostnames": mhost.hostnames[:6], "services": svc_json}
         for hostname in mhost.hostnames[:3]:
             s.names.append((hostname, "mdns"))
     for ip, shost in ssdp_hosts.items():
-        at_ip = mac_at(ip)
+        devices = shost.devices()
+        at_ip = owner(ip, Signals(ssdp=[_ssdp_device(d) for d in devices]))
         if at_ip:
-            sight(at_ip, at_ip in present).facts["ssdp"] = {"devices": shost.devices()}
+            sight(at_ip, at_ip in present).facts["ssdp"] = {"devices": devices}
     for ip, nb_names in nb.items():
         at_ip = mac_at(ip)
         if at_ip:
@@ -450,7 +646,32 @@ def discover(args: Any) -> dict[str, Any]:
             known_names = {str(r["mac"]): list(r["names"]) for r in inv.selector_rows()}
             for smac, sighting in sightings.items():
                 known_names.setdefault(smac, []).extend(n for n, _src in sighting.names)
-            ha_facts = ha_registry.facts_by_mac(ha_devices, inv.ip_to_mac(), known_names)
+            announced: dict[str, set[str]] = {}
+            for fmac, fsource, fvalue in (
+                (str(r["mac"]), str(r["source"]), r["value"])
+                for r in inv.db.execute(
+                    "SELECT mac, source, value FROM discovery WHERE source IN ('mdns', 'ssdp')"
+                )
+            ):
+                with contextlib.suppress(ValueError, TypeError):
+                    announced.setdefault(fmac, set()).update(
+                        fingerprint.device_ids({fsource: json.loads(fvalue)})
+                    )
+            for smac, sighting in sightings.items():
+                announced.setdefault(smac, set()).update(fingerprint.device_ids(sighting.facts))
+            online_now = {ip: m for m, ip in present.items() if ip and ip not in conflicted}
+            ever_seen = {
+                str(r["mac"])
+                for r in inv.db.execute("SELECT mac FROM devices WHERE first_seen IS NOT NULL")
+            }
+            ha_facts = ha_registry.facts_by_mac(
+                ha_devices,
+                inv.ip_to_mac(),
+                known_names,
+                ids=announced,
+                online=online_now,
+                seen=ever_seen | set(present),
+            )
             for hmac, value in ha_facts.items():
                 ha_sighting = sight(hmac, hmac in present)
                 ha_sighting.facts["ha"] = value
@@ -468,6 +689,8 @@ def discover(args: Any) -> dict[str, Any]:
         stamp = datetime.now(UTC).replace(microsecond=0).isoformat()
         for target, status, error in health_results:
             inv.update_service_health(target["mac"], target["port"], status, error, stamp)
+        rescan = [] if args.no_services else _rescan_targets(inv, present, protected | conflicted)
+    scanned = _scan_returning(rescan, net.ip)
 
     return {
         "at": result.at,
@@ -488,6 +711,8 @@ def discover(args: Any) -> dict[str, Any]:
         "protected": sorted(protected),
         "ip_conflicts": sorted(conflicted),
         "mi_clients_online": sum(1 for c in mi_by_mac.values() if c.online),
+        "mesh_nodes_located": sum(1 for t in topo_facts.values() if t.get("locale")),
+        "rescanned": scanned,
     }
 
 

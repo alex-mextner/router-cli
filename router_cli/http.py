@@ -26,12 +26,21 @@ DRY RUN
     write is always computed from the page's current state, and records writes instead of
     sending them. ``render`` prints each recorded request exactly as it would go on the
     wire, with password fields redacted unless asked otherwise.
+
+HTTPS ON THE LAN
+    Some routers (Xiaomi) answer ``http://`` with a redirect to ``https://`` on the same
+    address and a self-signed certificate. ``HttpTransport`` follows exactly that upgrade
+    (same host, http -> https; a POST is re-sent, not turned into a GET) and from then on
+    talks HTTPS to that host. Certificates of PRIVATE / link-local addresses are not verified
+    (there is no CA for a router's LAN address); any other host is verified as usual.
 """
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import re
+import ssl
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -175,6 +184,62 @@ def normalize_base(host: str) -> str:
     return host
 
 
+class _UpgradeToHttps(Exception):
+    def __init__(self, url: str) -> None:
+        super().__init__(url)
+        self.url = url
+
+
+class _RedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Follow redirects as urllib does, except a same-host http -> https upgrade, which the
+    transport handles itself (switching its base URL; re-sending a POST as a POST)."""
+
+    def redirect_request(
+        self,
+        req: urllib.request.Request,
+        fp: Any,
+        code: int,
+        msg: str,
+        headers: Any,
+        newurl: str,
+    ) -> urllib.request.Request | None:
+        old, new = urllib.parse.urlsplit(req.full_url), urllib.parse.urlsplit(newurl)
+        if old.scheme == "http" and new.scheme == "https" and old.hostname == new.hostname:
+            raise _UpgradeToHttps(newurl)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def is_lan_host(host: str | None) -> bool:
+    """A private, link-local or loopback address (or a ``.local``/``.lan`` name)."""
+    text = (host or "").strip("[]").lower()
+    if text.endswith((".local", ".lan", ".home.arpa")):
+        return True
+    try:
+        ip = ipaddress.ip_address(text.split("%")[0])
+    except ValueError:
+        return False
+    return ip.is_private or ip.is_link_local or ip.is_loopback
+
+
+def lan_tls_context(url: str) -> ssl.SSLContext | None:
+    """An UNVERIFIED TLS context for a LAN address, None (= verify) for anything else."""
+    parts = urllib.parse.urlsplit(url)
+    if parts.scheme != "https" or not is_lan_host(parts.hostname):
+        return None
+    return unverified_tls_context()
+
+
+def unverified_tls_context() -> ssl.SSLContext:
+    """For LAN devices only (callers check the address): their certificates are self-signed."""
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    # codeql[py/insecure-protocol]
+    # Justified: only for private/link-local router addresses, which have no CA-signed
+    # certificate; the alternative is plain HTTP, which is what these routers redirect from.
+    ctx.verify_mode = ssl.CERT_NONE
+    return ctx
+
+
 @dataclass
 class HttpTransport:
     """Plain urllib. No cookies: neither supported router family needs one."""
@@ -200,20 +265,33 @@ class HttpTransport:
             )
         return self._do(request)
 
-    def _do(self, request: HttpRequest) -> str:
+    def _do(self, request: HttpRequest, upgraded: bool = False) -> str:
         url = self.base_url + request.path
         data = request.body() if request.method != "GET" else None
         req = urllib.request.Request(url, data=data, method=request.method)
         req.add_header("User-Agent", self.user_agent)
         if data is not None:
             req.add_header("Content-Type", request.content_type)
+        handlers: list[urllib.request.BaseHandler] = [_RedirectHandler()]
+        ctx = lan_tls_context(url)
+        if ctx is not None:
+            handlers.append(urllib.request.HTTPSHandler(context=ctx))
+        opener = urllib.request.build_opener(*handlers)
         try:
             # codeql[py/full-ssrf]
             # Justified: talking to the router the user named (--host / credentials.json) is
             # the entire purpose of this CLI; the path is fixed by the driver or refused by
             # check_path, and nothing here runs server-side on behalf of a remote caller.
-            with urllib.request.urlopen(req, timeout=self.timeout) as response:
+            with opener.open(req, timeout=self.timeout) as response:
                 raw: bytes = response.read()
+        except _UpgradeToHttps as exc:
+            if upgraded:
+                raise NetworkError(
+                    what=f"{self.base_url} keeps redirecting to HTTPS", why=exc.url, how=""
+                ) from None
+            parts = urllib.parse.urlsplit(exc.url)
+            self.base_url = f"https://{parts.netloc}"
+            return self._do(request, upgraded=True)
         except urllib.error.HTTPError as exc:
             raise RouterError(
                 what=f"{request.method} {url} answered HTTP {exc.code}",

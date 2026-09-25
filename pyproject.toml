@@ -32,7 +32,7 @@ Issues = "https://github.com/alex-mextner/router-cli/issues"
 include = ["router_cli*"]
 
 [tool.setuptools.package-data]
-router_cli = ["data/*", "_vendor/netprint/data/*", "_vendor/netprint/data/rules/*", "_vendor/netprint/LICENSE", "_vendor/netprint/VERSION"]
+router_cli = ["data/*", "_vendor/netprint/data/*", "_vendor/netprint/data/rules/*", "_vendor/netprint/data/tables/*", "_vendor/netprint/LICENSE", "_vendor/netprint/VERSION"]
 
 [tool.ruff]
 line-length = 100

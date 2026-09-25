@@ -108,6 +108,36 @@ def local_interfaces() -> list[LocalIface]:
     return out
 
 
+_DMI_PLACEHOLDERS = frozenset(
+    {"", "to be filled by o.e.m.", "system product name", "system manufacturer",
+     "default string", "not applicable", "none", "o.e.m."}
+)  # fmt: skip
+
+
+def host_facts(root: Path = Path("/")) -> dict[str, str]:
+    """This machine's make and model from SMBIOS (``dmi.vendor``, ``dmi.product``) and its OS
+    (``os.name``: os-release PRETTY_NAME). Missing or placeholder values are left out."""
+    out: dict[str, str] = {}
+    dmi = root / "sys" / "class" / "dmi" / "id"
+    for key, name in (("dmi.vendor", "sys_vendor"), ("dmi.product", "product_name")):
+        try:
+            value = " ".join((dmi / name).read_text("utf-8", errors="replace").split())
+        except OSError:
+            continue
+        if value.lower() not in _DMI_PLACEHOLDERS:
+            out[key] = value
+    for release in (root / "etc" / "os-release", root / "usr" / "lib" / "os-release"):
+        try:
+            text = release.read_text("utf-8", errors="replace")
+        except OSError:
+            continue
+        match = re.search(r'^PRETTY_NAME="?([^"\n]+)"?$', text, re.M)
+        if match:
+            out["os.name"] = match.group(1).strip()
+        break
+    return out
+
+
 def wifi_link(iface: str) -> dict[str, object] | None:
     """{"bssid", "band", "rssi"} of this machine's Wi-Fi association (``iw dev X link``)."""
     iw = shutil.which("iw") or ("/usr/sbin/iw" if Path("/usr/sbin/iw").exists() else None)

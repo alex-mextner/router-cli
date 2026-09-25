@@ -40,7 +40,7 @@ from ._vendor.netprint import find_markers, fingerprint_ports
 DEFAULT_PORTS = (
     80, 443, 8080, 8443, 8000, 8001, 8008, 8081, 8088, 8123, 8888, 9000, 9090, 5000, 5001,
     3000, 32400, 1880, 6052, 7125, 4408, 9999, 631, 8200, 49152, 8096, 8006, 9443, 10000,
-    2283, 8384, 5601, 3001, 8989, 7878, 9117, 8086, 4533,
+    2283, 8384, 5601, 3001, 8989, 7878, 9117, 8086, 4533, 4409, 81,
 )  # fmt: skip
 TLS_FIRST = frozenset({443, 8443, 5001, 9443, 8006, 10000})
 # Ports that never speak HTTP (or whose HTTP answer says nothing): connect-only.
@@ -96,6 +96,23 @@ class HostResult:
     mac: str | None = None
     open_ports: list[int] = field(default_factory=list)
     services: list[Service] = field(default_factory=list)
+    banners: dict[str, str] = field(default_factory=dict)  # port -> first line the server sent
+
+
+# Ports whose server speaks first: its greeting names the software ("SSH-2.0-OpenSSH_9.6p1
+# Ubuntu-3ubuntu13"). Nothing is sent; the first line is read and the connection closed.
+BANNER_PORTS = frozenset({22})
+
+
+def read_banner(ip: str, port: int, timeout: float) -> str | None:
+    try:
+        with socket.create_connection((ip, port), timeout=timeout) as sock:
+            sock.settimeout(timeout)
+            data = sock.recv(256)
+    except OSError:
+        return None
+    line = data.decode("latin-1", errors="replace").splitlines()[0] if data else ""
+    return line.strip()[:160] or None
 
 
 def _now() -> str:
@@ -349,11 +366,22 @@ def scan_hosts(
             if port not in NOT_HTTP
             and (port in web_ports or any(int(s["port"]) == port for s in known.get(r.ip, [])))
         }
+        banner_futures = {
+            pool.submit(read_banner, r.ip, port, max(connect_timeout, 1.5)): (r.ip, port)
+            for r in results.values()
+            for port in r.open_ports
+            if port in BANNER_PORTS
+        }
         for http_future in concurrent.futures.as_completed(http_futures):
             ip, _port = http_futures[http_future]
             service = http_future.result()
             if service is not None:
                 results[ip].services.append(service)
+        for banner_future in concurrent.futures.as_completed(banner_futures):
+            ip, port = banner_futures[banner_future]
+            banner = banner_future.result()
+            if banner:
+                results[ip].banners[str(port)] = banner
     for r in results.values():
         found = {s.port for s in r.services}
         for old in known.get(r.ip, []):

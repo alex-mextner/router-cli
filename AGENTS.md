@@ -22,23 +22,23 @@ fully typed (mypy strict), zero third-party runtime dependencies.
 | `commands/_area.py`, `_lists.py` | the generic `show / keys / set k=v` and `show / add / rm / clear` commands |
 | `device_selector.py` | device arguments: MAC (any format) / current IP / name or unique prefix, resolved in the local DB |
 | `completion.py` | shell completion engine (introspects each command's argparse parser) + bash/zsh/fish scripts |
-| `http.py` | `HttpRequest` (read/login/logout/write kinds), `HttpTransport` (urllib, write gate, path guard), `DryRunTransport`, request rendering + redaction |
+| `http.py` | `HttpRequest` (read/login/logout/write kinds), `HttpTransport` (urllib, write gate, path guard, same-host http->https upgrade, unverified TLS for LAN addresses only), `DryRunTransport`, request rendering + redaction |
 | `htmlform.py` | browser-accurate HTML form model (successful controls), tables, embedded `var x = '{json}'` blobs |
 | `drivers/base.py` | `Capability`, `BaseDriver` (unsupported defaults), `WritePlan`/`Deferred`, `execute` |
 | `drivers/ubee_evw32c.py` | the Ubee driver: session handling, parsers, write plans |
 | `drivers/ubee_areas.py` | the Ubee web UI as data: pages, forms, field maps, apply flags, list pages, Wi-Fi/WPS JSON |
 | `drivers/openwrt.py` | OpenWrt via rpcd `/ubus` JSON-RPC (session, luci-rpc, iwinfo, uci) |
-| `drivers/miwifi.py` | Xiaomi / Redmi routers and mesh nodes (LuCI JSON API): Wi-Fi clients, node, band, signal, traffic; read-only |
+| `drivers/miwifi.py` | Xiaomi / Redmi routers and mesh nodes (LuCI JSON API over HTTPS): Wi-Fi clients, node, band, signal, traffic; public `topo_graph` (placement / backhaul); read-only |
 | `drivers/__init__.py` | driver registry, aliases, GET-only `detect` |
 | `models.py` | normalized dataclasses + MAC/IP helpers |
 | `credentials.py` | `credentials.json` (0600/0700, keyed by host, `default`), optional OS keyrings |
-| `inventory.py` | SQLite inventory: router polls and LAN sweeps merged, presence/traffic samples, history, stats, multi-MAC grouping, the HA JSON contract |
-| `fingerprint.py` | inventory data -> netprint `Signals`; `connection` (wired/Wi-Fi, node, band, signal) |
+| `inventory.py` | SQLite inventory: router polls and LAN sweeps merged, presence/traffic samples, history, stats, multi-MAC grouping, device identity (brand/product/model/location), expected + offline services, the HA JSON contract |
+| `fingerprint.py` | inventory data -> netprint `Signals` (incl. HA registry, Moonraker, mesh, SSH-banner, host/gateway facts); announced device ids; `connection` (wired/Wi-Fi, node, band, signal) |
 | `_vendor/netprint/` | the device classifier (engine + JSON rules), vendored from github.com/alex-mextner/netprint by `scripts/vendor-netprint.sh` — change it upstream |
-| `lan/` | LAN discovery without the router: `netinfo` (interfaces), `sweep` (ICMP + ARP table), `mdns`, `ssdp`, `netbios` |
-| `ha_registry.py` | read-only Home Assistant device registry facts (by MAC, host, companion-app name) |
-| `commands/discover.py` | `router discover`: one sweep of the LAN into the inventory (the 5-minute timer) |
-| `scan.py` | concurrent port probe (web + connect-only fingerprint ports) + HTTP title/server/favicon/markers, service health |
+| `lan/` | LAN discovery without the router: `netinfo` (interfaces, this host's SMBIOS make/model and OS), `sweep` (ICMP + ARP table), `mdns`, `ssdp`, `netbios` |
+| `ha_registry.py` | read-only Home Assistant device registry facts (by MAC, announced device id, host -- also onto a private MAC --, companion-app name; merged across registry devices; areas, firmware) |
+| `commands/discover.py` | `router discover`: one sweep of the LAN into the inventory (the 5-minute timer); mesh placement (IPv6 link-local for a node on a shared address), brand-based attribution on IP conflicts, rescan of devices that came back |
+| `scan.py` | concurrent port probe (web + connect-only fingerprint ports; SSH banner read) + HTTP title/server/favicon/markers, service health |
 | `icons.py` + `data/icon_rules.json` | MDI icon rule engine |
 | `oui.py` + `data/oui.tsv.gz` | IEEE MA-L vendor table (shipped; `router oui update` refreshes) |
 | `install.py` | agent-skill registration (`router install-skill`) |
@@ -74,7 +74,12 @@ fully typed (mypy strict), zero third-party runtime dependencies.
   (and every interface of it, recognised by a neighbouring MAC) ARP and ICMP only — no HTTP,
   no SSDP description fetch, no mDNS/NetBIOS unicast. `Inventory.protected_ips()` lists those
   addresses; `scan --all-online` skips them and `scan --ip` refuses them without `--force`.
-  Some gateways (the Ubee) hang when their web server is polled often.
+  Some gateways (the Ubee) hang when their web server is polled often. The rescan of devices
+  that came back online and the Xiaomi topology fetch (IPv6 link-local for a node whose IPv4
+  address is shared) skip protected and conflicted addresses the same way.
+- **An answer from a shared address is attributed only by content.** On an IP conflict an
+  mDNS/SSDP answer goes to the one sharer whose OUI brand is the brand the answer names
+  (`discover.attribute`), else to nobody; ICMP/NetBIOS answers from it are never attributed.
 - **Sweeps decide who is online.** Once `discover` runs, a router poll no longer changes
   anyone's `online` flag; the machine router-cli runs on is always online.
 - **The inventory JSON contract is stable.** Keys of `inventory list --json` (see

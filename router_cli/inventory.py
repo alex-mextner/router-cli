@@ -44,7 +44,25 @@ THE JSON CONTRACT (consumed by a Home Assistant dashboard — keep it stable; on
                       "traffic": {"rx_bytes", "tx_bytes", "rx_rate", "tx_rate",
                                   "updated_at", "source"} | null,
                       "interfaces": [{"mac", "ip", "online", "name", "type"}],
-                      "same_device_as": mac|null}]}
+                      "same_device_as": mac|null,
+                      "brand": str|null, "product": str|null, "model": str|null,
+                      "model_id": str|null, "friendly_name": str|null,
+                      "location": str|null, "os": str|null, "firmware": str|null,
+                      "oui_vendor": str|null}]}
+
+    Device identity (added 2026-09): ``brand`` is the maker the evidence names (the Cast
+    model, a UPnP/Home Assistant manufacturer, an Apple model id...; the OUI only when it is
+    not a Wi-Fi-module maker), so a private-MAC Chromecast is "Google". ``vendor`` is
+    ``brand`` when known, else the OUI vendor; ``oui_vendor`` is always the raw OUI vendor.
+    ``product`` ("Chromecast HD", "MacBook Pro 16″"), ``model`` (the full name: "MacBook Pro
+    16″ (M4 Pro, 2024)"), ``model_id`` ("Mac16,7", "xiaomi.router.rd28", "UE48J5500"),
+    ``friendly_name`` (the name the device calls itself or the user gave it), ``location``
+    (a mesh node's placement from its topo graph, else the Home Assistant area), ``os`` and
+    ``firmware`` when public. ``display_name`` composes them: "Google Chromecast «Гостиная»".
+    ``services[].expected`` (bool) marks a web UI the kind of device serves (a Creality
+    printer's :80) that no scan has confirmed yet; an offline device keeps its services with
+    ``reachable: false, error: "offline"``. ``ip`` falls back to the reserved address of a
+    device never seen online.
 
     ``hostname`` is the local alias if one is set, else the router-reported name, else the
     most recent other name. ``names`` lists all of them, alias first, newest first.
@@ -138,6 +156,7 @@ SERVICE_COLUMNS = {
     "markers": "TEXT",
     "favicon_hash": "TEXT",
 }
+SCAN_COLUMNS = {"banners": "TEXT"}  # {"22": "SSH-2.0-OpenSSH_9.6p1 Ubuntu-3ubuntu13"}
 
 FILTERS = ("recent", "active", "all", "reserved", "new")
 GRACE_S = 660  # a device missing from a single 5-minute sweep is still online
@@ -211,6 +230,62 @@ class DiscoveryResult:
     went_offline: list[str]
 
 
+def _driver_vendor(driver: str | None) -> str | None:
+    if not driver:
+        return None
+    from .drivers import DRIVERS
+
+    cls = DRIVERS.get(driver)
+    return str(getattr(cls, "vendor", "") or "") or None
+
+
+def _with_expected(
+    services: list[dict[str, Any]],
+    expected: list[dict[str, Any]],
+    ip: str | None,
+    online: bool,
+    open_ports: set[int] | None,
+) -> list[dict[str, Any]]:
+    """The device's known web services, plus the ones its kind of device is known to serve
+    (``expected: true``, e.g. a Creality printer's UI on :80) that no scan has confirmed yet.
+
+    An offline device keeps its services, marked ``reachable: false`` / ``error: "offline"``
+    (the last title and favicon stay, so a dashboard can still show and link them). An
+    expected port that a scan of the device (online) found closed is left out."""
+    out: list[dict[str, Any]] = []
+    for svc in services:
+        item = dict(svc, expected=False)
+        if not online:
+            if item.get("reachable") is not False:
+                item["error"] = "offline"
+            item.update(reachable=False, http_status=None)
+        out.append(item)
+    have = {int(s["port"]) for s in out}
+    for exp in expected:
+        port = int(exp["port"])
+        if port in have or not ip or (online and open_ports is not None and port not in open_ports):
+            continue
+        scheme = str(exp.get("scheme") or "http")
+        default = 443 if scheme == "https" else 80
+        out.append(
+            {
+                "port": port,
+                "scheme": scheme,
+                "url": f"{scheme}://{ip}/" if port == default else f"{scheme}://{ip}:{port}/",
+                "title": exp.get("title") or None,
+                "server": None,
+                "favicon_data_url": None,
+                "checked_at": None,
+                "reachable": None if online else False,
+                "http_status": None,
+                "error": None if online else "offline",
+                "expected": True,
+            }
+        )
+        have.add(port)
+    return sorted(out, key=lambda s: int(s["port"]))
+
+
 def _merge_mdns(old: Any, new: dict[str, Any]) -> dict[str, Any]:
     """mDNS answers are partial and devices sleep: keep what was heard before, update it."""
     if not isinstance(old, dict):
@@ -236,13 +311,15 @@ class Inventory:
         self.db.executescript(SCHEMA)
         self._migrate()
         self._local: list[Any] | None = None
+        self._host: dict[str, str] | None = None
 
     def _migrate(self) -> None:
-        have = {r["name"] for r in self.db.execute("PRAGMA table_info(services)")}
         with self.db:
-            for column, kind in SERVICE_COLUMNS.items():
-                if column not in have:
-                    self.db.execute(f"ALTER TABLE services ADD COLUMN {column} {kind}")
+            for table, columns in (("services", SERVICE_COLUMNS), ("scans", SCAN_COLUMNS)):
+                have = {r["name"] for r in self.db.execute(f"PRAGMA table_info({table})")}
+                for column, kind in columns.items():
+                    if column not in have:
+                        self.db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {kind}")
 
     def close(self) -> None:
         self.db.close()
@@ -291,6 +368,14 @@ class Inventory:
             except OSError:
                 self._local = []
         return self._local
+
+    def host_facts(self) -> dict[str, str]:
+        """This machine's make/model (SMBIOS) and OS name (cached per Inventory)."""
+        if self._host is None:
+            from .lan.netinfo import host_facts
+
+            self._host = host_facts()
+        return self._host
 
     # ── merging a router poll ────────────────────────────────────────────────
     def record_poll(
@@ -383,6 +468,10 @@ class Inventory:
             self._set_meta("router.driver", info.driver)
             self._set_meta("router.model", info.model)
             self._set_meta("router.host", info.host)
+            if info.vendor:
+                self._set_meta("router.vendor", info.vendor)
+            if info.firmware:
+                self._set_meta("router.firmware", info.firmware)
             self._set_meta("last_poll", at)
         return PollResult(at=at, seen=len(seen), new=new, went_offline=offline)
 
@@ -456,6 +545,8 @@ class Inventory:
                         "ON CONFLICT(mac) DO NOTHING",
                         (mac, oui.vendor(mac), int(is_random_mac(mac))),
                     )
+                if "ha" in s.facts:  # the registry is re-read every run: its names too
+                    self.db.execute("DELETE FROM names WHERE mac = ? AND source = 'ha'", (mac,))
                 for name, name_source in s.names:
                     if name:
                         self._touch_name(mac, name, name_source, at)
@@ -706,7 +797,13 @@ class Inventory:
         ]
 
     def save_scan(
-        self, mac: str, ip: str, open_ports: list[int], services: list[dict[str, Any]], at: str
+        self,
+        mac: str,
+        ip: str,
+        open_ports: list[int],
+        services: list[dict[str, Any]],
+        at: str,
+        banners: dict[str, str] | None = None,
     ) -> None:
         with self.db:
             self.db.execute("DELETE FROM services WHERE mac = ?", (mac,))
@@ -735,11 +832,19 @@ class Inventory:
                     ),
                 )
             self.db.execute(
-                "INSERT INTO scans (mac, ip, open_ports, checked_at) VALUES (?, ?, ?, ?) "
+                "INSERT INTO scans (mac, ip, open_ports, checked_at, banners) "
+                "VALUES (?, ?, ?, ?, ?) "
                 "ON CONFLICT(mac) DO UPDATE SET ip = excluded.ip, "
                 "open_ports = excluded.open_ports, "
-                "checked_at = excluded.checked_at",
-                (mac, ip, json.dumps(sorted(open_ports)), at),
+                "checked_at = excluded.checked_at, "
+                "banners = COALESCE(excluded.banners, scans.banners)",
+                (
+                    mac,
+                    ip,
+                    json.dumps(sorted(open_ports)),
+                    at,
+                    json.dumps(banners, ensure_ascii=False) if banners else None,
+                ),
             )
 
     def service_targets(self) -> list[dict[str, Any]]:
@@ -784,8 +889,8 @@ class Inventory:
         rows = self.db.execute("SELECT * FROM devices").fetchall()
         own = {i.mac: i for i in self.local_ifaces()}
         facts = self._all_facts()
-        groups = self._groups([str(r["mac"]) for r in rows], facts, own)
         by_mac = {str(r["mac"]): r for r in rows}
+        groups = self._groups([str(r["mac"]) for r in rows], facts, own, by_mac)
         # this machine is always online
         items = [self._device_json(r, facts.get(str(r["mac"]), {}), own, favicons) for r in rows]
         by_json = {d["mac"]: d for d in items}
@@ -845,11 +950,32 @@ class Inventory:
         return out
 
     def _groups(
-        self, macs: list[str], facts: dict[str, dict[str, Any]], own: dict[str, Any]
+        self,
+        macs: list[str],
+        facts: dict[str, dict[str, Any]],
+        own: dict[str, Any],
+        rows: dict[str, sqlite3.Row] | None = None,
     ) -> dict[str, str]:
-        """{mac: primary mac} for every MAC that belongs to a multi-MAC physical device."""
+        """{mac: primary mac} for every MAC that belongs to a multi-MAC physical device.
+
+        A Home Assistant device groups the MACs it lists with the MAC it was matched to (by
+        host or device id: a Chromecast's registered MAC and the private one it uses on
+        Wi-Fi); the primary is the member seen online most recently."""
         present = set(macs)
         out: dict[str, str] = {}
+        rows = rows or {}
+
+        def best(members: list[str]) -> str:
+            """The member online now, else the one seen last (ties: the listed order)."""
+
+            def seen(m: str) -> str:
+                return str(rows[m]["last_seen"] or "") if m in rows else ""
+
+            def offline(m: str) -> bool:
+                return not (m in rows and rows[m]["online"])
+
+            return min(sorted(members, key=seen, reverse=True), key=offline)
+
         own_present = [m for m in own if m in present]
         if own_present:
             primary = own_present[0]  # local_interfaces() lists the default-route NIC first
@@ -863,9 +989,12 @@ class Inventory:
                 out.setdefault(other, other)
             ha = f.get("ha") or {}
             ha_macs = [m for m in ha.get("macs") or [] if m in present]
+            if mac in present and mac not in ha_macs and ha.get("matched") in ("host", "id"):
+                ha_macs.append(mac)
             if len(ha_macs) > 1 and mac in ha_macs:
+                primary = best(ha_macs)
                 for member in ha_macs:
-                    out.setdefault(member, ha_macs[0])
+                    out.setdefault(member, primary)
         return out
 
     def _names(self, row: sqlite3.Row) -> list[str]:
@@ -920,15 +1049,26 @@ class Inventory:
             }
             for r in service_rows
         ]
-        scan = self.db.execute("SELECT open_ports FROM scans WHERE mac = ?", (mac,)).fetchone()
+        scan = self.db.execute(
+            "SELECT open_ports, banners FROM scans WHERE mac = ?", (mac,)
+        ).fetchone()
         open_ports = json.loads(scan["open_ports"]) if scan and scan["open_ports"] else []
+        if scan and scan["banners"]:
+            facts = {**facts, "banners": json.loads(scan["banners"])}
         local = own.get(mac)
+        online = bool(row["online"]) or local is not None
         if local is not None:
             net = dict(facts.get("net") or {})
             net["self"] = 1
             if local.wireless:
                 net["wireless"] = 1
-            facts = {**facts, "net": net}
+            facts = {**facts, "net": net, "host": self.host_facts()}
+        elif (facts.get("net") or {}).get("gateway"):
+            router = {f"router.{k}": self.meta(f"router.{k}") for k in ("model", "firmware")}
+            router["router.vendor"] = self.meta("router.vendor") or _driver_vendor(
+                self.meta("router.driver")
+            )
+            facts = {**facts, "host": {k: v for k, v in router.items() if v}}
         ha = facts.get("ha") or {}
         rich_services = [
             {
@@ -946,20 +1086,19 @@ class Inventory:
             open_ports,
             facts,
         )
-        if ha.get("name"):
-            signals.extra["name"] = str(ha["name"])
-        for key in ("model", "manufacturer", "title"):
-            if ha.get(key):
-                signals.extra[f"ha.{key}"] = str(ha[key])
-        if ha.get("domains"):
-            signals.extra["ha.domain"] = " ".join(ha["domains"])
         result = fingerprint.classify_device(signals, alias=row["alias_name"])
         display = result.display_name or hostname or mac
+        friendly = result.friendly_name
         if local is not None and not row["alias_name"]:
             import socket
 
             host = socket.gethostname().split(".")[0]
             display = f"{host} ({result.label})" if result.label else host
+            friendly = host
+        ip = row["ip"] or row["reserved_ip"]
+        services = _with_expected(
+            services, result.services, ip, online, set(open_ports) if scan else None
+        )
         link_row = self.db.execute("SELECT * FROM links WHERE mac = ?", (mac,)).fetchone()
         link = dict(link_row) if link_row else None
         conn = fingerprint.connection(result, row["vendor"], bool(row["random_mac"]), link, facts)
@@ -992,15 +1131,25 @@ class Inventory:
             or (result.icon if result.category != "unknown" else None)
             or icons.choose(legacy)
         )
+        location = (facts.get("miwifi_topo") or {}).get("locale") or ha.get("area")
         return {
             "mac": mac,
-            "ip": row["ip"],
+            "ip": ip,
             "hostname": hostname,
             "names": names,
-            "vendor": row["vendor"],
+            "vendor": result.brand or row["vendor"],
+            "oui_vendor": row["vendor"],
+            "brand": result.brand,
+            "product": result.product,
+            "model": result.model,
+            "model_id": result.model_id,
+            "friendly_name": friendly,
+            "location": location,
+            "os": result.os,
+            "firmware": result.firmware,
             "random_mac": bool(row["random_mac"]),
             "interface": row["interface"],
-            "online": bool(row["online"]) or local is not None,
+            "online": online,
             "first_seen": row["first_seen"],
             "last_seen": row["last_seen"],
             "reserved_ip": row["reserved_ip"],

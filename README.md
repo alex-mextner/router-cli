@@ -165,11 +165,15 @@ Two things fill it:
 - **`router discover`** sweeps the LAN *from this machine* and never talks to the router's web
   server: an ICMP echo sweep with reply TTLs plus the kernel ARP table (presence), mDNS/DNS-SD
   (multicast and direct unicast questions, reverse lookups), SSDP + UPnP descriptions, NetBIOS
-  names, the public `init_info` of Xiaomi routers, Moonraker's `/printer/info`, a health check
-  of every known web service, and — with credentials — the Xiaomi mesh client list (node,
-  band, signal, traffic). Home Assistant's device registry (`--ha-config` /
-  `ROUTER_CLI_HA_CONFIG`, read-only) adds what you already told HA. About 10 s; meant for a
-  5-minute timer. Once it runs, sweeps (not router polls) decide who is online, and the
+  names, the public `init_info` and `topo_graph` of Xiaomi mesh nodes (model, firmware,
+  placement), Moonraker's `/printer/info`, a health check of every known web service, a web-UI
+  scan of devices that came back online since the last scan, and — with credentials — the
+  Xiaomi mesh client list (node, band, signal, traffic). Home Assistant's device registry
+  (`--ha-config` / `ROUTER_CLI_HA_CONFIG`, read-only) adds what you already told HA: names,
+  rooms, models, firmware — matched by MAC, by a device id the device announces (Cast UUID,
+  Yandex Station id, UPnP UDN), by the address in the integration's config (also onto the
+  private MAC a Chromecast uses on Wi-Fi), or by the companion app's name. About 10 s; meant
+  for a 5-minute timer. Once it runs, sweeps (not router polls) decide who is online, and the
   machine running it is always online.
 
 ```bash
@@ -186,19 +190,27 @@ router alias 02:00:00:00:00:05 --name "3D printer" --icon mdi:printer-3d
 
 The gateway (and any interface of it, recognised by its neighbouring MAC) only ever gets ARP
 and ping from `discover`; `scan --all-online` skips it and `scan --ip <gateway>` needs
-`--force`. An address two devices answer for (an IP conflict) is detected from the sweeps, left
-unattributed, and reported by `stats`.
+`--force`. An address two devices answer for (an IP conflict) is detected from the sweeps and
+reported by `stats`; an mDNS/SSDP answer from it is attributed only when exactly one of the
+devices sharing it has the brand the answer names (a Yandex Station and a Xiaomi node on one
+address: the `_yandexio` answer is the Yandex's). A Xiaomi mesh node whose IPv4 address is
+shared is asked for its public topology over IPv6 link-local instead (its EUI-64 address).
 
 ### What each device is
 
 Every device is classified by [netprint](https://github.com/alex-mextner/netprint) (vendored in
-`router_cli/_vendor/netprint`, refreshed with `scripts/vendor-netprint.sh`): ~480 data-driven
+`router_cli/_vendor/netprint`, refreshed with `scripts/vendor-netprint.sh`): ~580 data-driven
 rules over the OUI vendor, randomised MACs, host names, mDNS services and TXT records (Apple
 model ids, ESPHome, Cast, Yandex, Moonraker, HomeKit...), UPnP descriptions, web titles and
 page markers, open ports (a connect-only probe of the ports the rules know: 62078 iOS, 6053
-ESPHome, 6668 Tuya, 1961 Yandex, 7125 Moonraker, ...), TTL, NetBIOS and the Home Assistant
-registry. Each device gets a `category`, an `icon`, a `confidence`, the `evidence` behind it
-and a `display_name`. `router alias --name/--icon` beats everything; rules in
+ESPHome, 6668 Tuya, 1961 Yandex, 7125 Moonraker, ...), SSH banners, TTL, NetBIOS, Xiaomi mesh
+facts and the Home Assistant registry. Each device gets a `category`, an `icon`, a
+`confidence`, the `evidence` behind it, its identity — `brand` (from what the device says,
+not only the OUI: a private-MAC Chromecast is Google), `product`, `model`, `model_id`, `os`,
+`firmware`, `friendly_name`, `location` (a mesh node's placement, or the Home Assistant room)
+— and a `display_name` composed from them: "Google Chromecast «Living room»", "Apple MacBook
+Pro 16″ «Sam's MBP»" (the friendly name is shown when it says something the model does not).
+`router alias --name` sets the friendly name; `--icon` beats every icon; rules in
 `~/.config/router-cli/icon_rules.json` (legacy shape) beat the classifier's icon.
 
 One physical device with several MACs (this machine's Ethernet + Wi-Fi, a TV's two NICs, the
@@ -214,7 +226,11 @@ per-client counters. With the mesh's admin password stored, `discover` reads it 
 router login --driver miwifi --host 192.168.31.1 --no-default   # the main mesh node
 ```
 
-(An access point never becomes the default router.) Without it, `connection` is a heuristic
+(An access point never becomes the default router. Xiaomi firmware redirects its web API to
+HTTPS with a self-signed certificate: router-cli follows that same-host upgrade and does not
+verify certificates of private addresses.) Even without a password, every node's public
+`topo_graph` gives its placement ("Bedroom" — the `location` field), its backhaul and the
+node names used as `connection.via_name`. Without it, `connection` is a heuristic
 (`source: "heuristic"`: randomised MAC or phone/IoT category → Wi-Fi, motherboard NIC → wired,
 else unknown) and `traffic` is `null`.
 
@@ -249,10 +265,20 @@ ever added:
                 "updated_at": "...", "source": "miwifi"},
     "interfaces": [{"mac": "02:00:00:00:00:05", "ip": "192.168.0.50", "online": true,
                     "name": null, "type": "wifi"}],
-    "same_device_as": null
+    "same_device_as": null,
+    "brand": "Snapmaker", "product": "Snapmaker U1", "model": "Snapmaker U1",
+    "model_id": null, "friendly_name": "3D printer", "location": "Workshop",
+    "os": "Klipper", "firmware": "1.4.1", "oui_vendor": "AMPAK"
   }]
 }
 ```
+
+- `vendor` is the `brand` when one is known (else the OUI vendor); `oui_vendor` is always the
+  raw OUI vendor (`null` for a randomised MAC).
+- `services[].expected: true` marks a web UI the kind of device is known to serve (a Creality
+  printer's `:80`) that no scan confirmed yet; an offline device keeps its services with
+  `reachable: false, error: "offline"`. `ip` falls back to the reserved address of a device
+  never seen online.
 
 - `pinnable` is false for randomised MACs (a reservation would not survive the next rotation).
 - `services[].reachable/http_status/error` come from the last scan or the 5-minute health
@@ -274,7 +300,9 @@ router or access point.
 
 `scan` only ever sends a GET for `/` and for the favicon to each open web port (HTTPS first on
 the usual TLS ports, certificates not verified — LAN devices are self-signed); fingerprint
-ports are connect-only. Favicons are stored as `data:` URLs capped at 32 KiB.
+ports are connect-only, except that the first line an SSH server sends by itself (its banner:
+"SSH-2.0-OpenSSH_9.6p1 Ubuntu-3ubuntu13") is read. Favicons are stored as `data:` URLs capped
+at 32 KiB.
 
 ### Timers
 

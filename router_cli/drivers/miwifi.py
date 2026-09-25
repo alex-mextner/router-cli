@@ -17,13 +17,21 @@ PROTOCOL (read-only here)
     ``GET  /cgi-bin/luci/;stok=T/api/misystem/status``       ``dev``: per-client upload/
                                                    download totals and current speeds (B/s)
     ``GET  /cgi-bin/luci/;stok=T/api/xqnetwork/wifi_connect_devices``   signal per client
-    ``GET  /cgi-bin/luci/;stok=T/api/misystem/topo_graph``   mesh nodes
+    ``GET  /cgi-bin/luci/api/misystem/topo_graph``  public on current firmware: every node
+                                                   (``ip``, ``name``, ``locale`` = the
+                                                   placement set in the app, ``hardware``,
+                                                   ``mode``; satellites under ``leafs`` with
+                                                   ``link_type`` wired/wireless, ``onlines``)
     ``GET  /cgi-bin/luci/;stok=T/web/logout``      ends the session (kind="logout")
 
-    Field names follow the firmware's JSON as documented by the open-source integrations
-    (e.g. hass-miwifi); parsing is defensive and missing keys become None. This driver was
-    written without a logged-in capture from a real device: treat per-client signal and
-    traffic as best effort until verified.
+    Current firmware (1.0.x, RD28 "Mesh System AX3000 NE") answers everything but
+    ``init_info`` on plain HTTP with a redirect to HTTPS (self-signed certificate);
+    ``HttpTransport`` follows it. Over IPv6 link-local the node's nginx wants ``Host:
+    localhost``. Field names follow the firmware's JSON as documented by the open-source
+    integrations (dmamontov/hass-miwifi); parsing is defensive and missing keys become None.
+    ``init_info`` and ``topo_graph`` were verified against a real node; the logged-in client
+    list was written from those integrations and synthetic fixtures: treat per-client signal
+    and traffic as best effort until verified.
 """
 
 from __future__ import annotations
@@ -45,6 +53,7 @@ from .base import BaseDriver, Capability
 # sending it (it ships in the firmware's public JavaScript and in open-source integrations).
 KEY = "a2ffa5c9be07488bbb04a3a47d3c5f6a"  # gitleaks:allow
 INIT_INFO = "/cgi-bin/luci/api/xqsystem/init_info"
+TOPO_GRAPH = "/cgi-bin/luci/api/misystem/topo_graph"
 LOGIN = "/cgi-bin/luci/api/xqsystem/login"
 BANDS = {0: None, 1: "2.4", 2: "5", 3: "2.4", 6: "5", 7: "6"}
 TOKEN_RE = re.compile(r";stok=[0-9a-fA-F]+")
@@ -169,26 +178,36 @@ def parse_clients(
 
 
 def parse_mesh_nodes(topo: dict[str, Any] | None) -> list[dict[str, Any]]:
-    """[{mac, ip, name}] of every node in ``topo_graph`` (root first)."""
+    """Every node of ``topo_graph``, root first: ``{mac, ip, name, locale, hardware, root,
+    mode, link_type, clients}``. ``locale`` is the placement the user picked in the Mi Home /
+    Xiaomi WiFi app ("Bedroom", "Living room"); ``name`` the router name; ``mac`` is often
+    absent (the graph identifies nodes by address), ``link_type`` is the satellite's
+    backhaul ("wired" / "wireless")."""
     out: list[dict[str, Any]] = []
 
-    def walk(node: Any) -> None:
+    def walk(node: Any, root: bool) -> None:
         if not isinstance(node, dict):
             return
         mac = _mac(node.get("mac") or node.get("macaddr"))
-        if mac:
+        ip = str(node.get("ip") or "") or None
+        if mac or ip:
             out.append(
                 {
                     "mac": mac,
-                    "ip": node.get("ip"),
-                    "name": node.get("name") or node.get("locale") or node.get("hardware"),
+                    "ip": ip,
+                    "name": (str(node.get("name") or "").strip() or None),
+                    "locale": (str(node.get("locale") or "").strip() or None),
+                    "hardware": node.get("hardware"),
+                    "root": root,
+                    "mode": _int(node.get("mode")),
+                    "link_type": node.get("link_type"),
+                    "clients": _int(node.get("onlines")),
                 }
             )
         for child in node.get("leafs") or node.get("nodes") or []:
-            walk(child)
+            walk(child, False)
 
-    graph = (topo or {}).get("graph")
-    walk(graph)
+    walk((topo or {}).get("graph"), True)
     return out
 
 
@@ -342,8 +361,20 @@ class MiWiFi(BaseDriver):
         wifi = self._optional("xqnetwork/wifi_connect_devices")
         return parse_clients(devicelist, status, wifi)
 
+    def topo_graph(self) -> dict[str, Any] | None:
+        """``misystem/topo_graph`` — public on current firmware (no token), else with one."""
+        try:
+            data = json.loads(self.transport.get(TOPO_GRAPH))
+        except (RouterCliError, ValueError):
+            data = None
+        if isinstance(data, dict) and isinstance(data.get("graph"), dict):
+            return data
+        if self.credentials is None:
+            return None
+        return self._optional("misystem/topo_graph")
+
     def mesh_nodes(self) -> list[dict[str, Any]]:
-        return parse_mesh_nodes(self._optional("misystem/topo_graph"))
+        return parse_mesh_nodes(self.topo_graph())
 
     def devices(self) -> list[Device]:
         out = []

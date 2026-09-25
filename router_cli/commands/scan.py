@@ -96,7 +96,9 @@ def run(argv: list[str]) -> int:
         if not args.no_save:
             for r in results:
                 if r.mac:
-                    inv.save_scan(r.mac, r.ip, r.open_ports, [s.to_json() for s in r.services], at)
+                    inv.save_scan(
+                        r.mac, r.ip, r.open_ports, [s.to_json() for s in r.services], at, r.banners
+                    )
 
     out = [
         {

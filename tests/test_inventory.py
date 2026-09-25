@@ -44,6 +44,16 @@ ADDED_KEYS = {
     "traffic",
     "interfaces",
     "same_device_as",
+    # device identity (brand / model / the name it goes by / where it stands)
+    "brand",
+    "product",
+    "model",
+    "model_id",
+    "friendly_name",
+    "location",
+    "os",
+    "firmware",
+    "oui_vendor",
 }
 SERVICE_KEYS = {
     "port",
@@ -56,6 +66,7 @@ SERVICE_KEYS = {
     "reachable",
     "http_status",
     "error",
+    "expected",  # a web UI the kind of device serves that no scan confirmed yet
 }
 INFO = RouterInfo(driver="ubee_evw32c", host="192.168.0.1", model="EVW32C-0N")
 

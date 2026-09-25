@@ -16,8 +16,9 @@ from .ubee_evw32c import UbeeEVW32C
 
 DRIVERS: dict[str, type[BaseDriver]] = {
     UbeeEVW32C.name: UbeeEVW32C,
-    OpenWrt.name: OpenWrt,
+    # before OpenWrt: Xiaomi firmware is LuCI too, and its init_info probe is specific
     MiWiFi.name: MiWiFi,
+    OpenWrt.name: OpenWrt,
 }
 
 ALIASES: dict[str, str] = {
