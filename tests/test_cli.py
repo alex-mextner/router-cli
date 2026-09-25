@@ -117,7 +117,7 @@ def test_inventory_update_and_list(
     assert code == 0 and summary["seen"] == 20 and summary["reservations"] == 7
     code, out = run(capsys, "inventory", "list", "--json", "--filter", "all")
     data: dict[str, Any] = json.loads(out)
-    assert set(data) == {"generated_at", "router", "devices"}
+    assert set(data) == {"generated_at", "last_poll", "router", "devices"}
     assert data["router"] == {"driver": "ubee_evw32c", "model": "EVW32C-0N", "host": "192.168.0.1"}
     assert re.match(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\+00:00$", data["generated_at"])
     assert len(data["devices"]) == 24  # 20 seen + 4 reservation-only

@@ -12,7 +12,8 @@ randomised, local aliases (name/icon), and the HTTP(S) services ``router scan`` 
 THE JSON CONTRACT (consumed by a Home Assistant dashboard — keep it stable)
     ``router inventory list --json`` prints::
 
-        {"generated_at": ISO-8601 with offset,
+        {"generated_at": ISO-8601 with offset (when this list was printed),
+         "last_poll": ISO-8601 of the last `inventory update`, or null,
          "router": {"driver", "model", "host"},
          "devices": [{"mac", "ip", "hostname", "names": [str], "vendor", "random_mac",
                       "interface", "online", "first_seen", "last_seen", "reserved_ip",

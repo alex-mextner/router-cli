@@ -1,11 +1,13 @@
 """inventory — poll the router into the local device database, and list what it knows.
 
-    router inventory update [--resolve]
+    router inventory update [--resolve] [--wait 120]
     router inventory list --json [--filter recent|active|all|reserved|new] [--since 24h]
 
 ``update`` reads devices and static leases from the router (GET-only), merges them into
 the SQLite inventory, and (with ``--resolve``) looks up reverse-DNS/mDNS names for
-devices the router gives no name for. ``list --json`` is the stable contract documented
+devices the router gives no name for. Concurrent updates are serialized by a lock file next
+to the database; one that finds a poll already running waits for it and reuses its result
+instead of polling the router again. ``list --json`` is the stable contract documented
 in :mod:`router_cli.inventory`.
 """
 
@@ -14,10 +16,13 @@ from __future__ import annotations
 import socket
 import threading
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from typing import Any
 
 from .._errors import RouterCliError
+from ..config import db_path
 from ..drivers.base import BaseDriver, Capability
 from ..inventory import FILTERS, Inventory, now_iso, parse_since
 from ..models import Device
@@ -82,6 +87,46 @@ def update(driver: BaseDriver, resolve: bool = False) -> dict[str, Any]:
         }
 
 
+@contextmanager
+def poll_lock(wait: float = 120.0) -> Iterator[bool]:
+    """Serialize `inventory update` across processes (a timer and a UI button can collide).
+
+    Yields True when this process holds the lock and should poll. If another poll is
+    running, waits (up to ``wait`` seconds) for it to finish and yields False: its result
+    is fresh, so polling the router a second time would only cost the router requests.
+    """
+    try:
+        import fcntl
+    except ImportError:  # pragma: no cover - Windows: no cross-process lock, just poll
+        yield True
+        return
+    path = db_path().parent / "inventory-update.lock"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a+") as handle:
+        first = True
+        try:
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            first = False
+            deadline = time.monotonic() + max(0.0, wait)
+            while True:
+                time.sleep(0.2)
+                try:
+                    fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except BlockingIOError:
+                    if time.monotonic() > deadline:
+                        raise RouterCliError(
+                            what="another `router inventory update` is still running",
+                            why=f"it did not finish within {wait:g} s",
+                            how="try again later (or raise --wait)",
+                        ) from None
+        try:
+            yield first
+        finally:
+            fcntl.flock(handle, fcntl.LOCK_UN)
+
+
 def run(argv: list[str]) -> int:
     if not argv or argv[0] not in ("update", "list", "-h", "--help"):
         argv = ["list", *argv]
@@ -93,6 +138,13 @@ def run(argv: list[str]) -> int:
         action="store_true",
         help="also look up reverse-DNS/mDNS names (adds up to 2 s)",
     )
+    p.add_argument(
+        "--wait",
+        type=float,
+        default=120.0,
+        help="if another poll is running, wait up to this many seconds for it and use its "
+        "result instead of polling again (default 120)",
+    )
     C.add_router_args(p)
     p = sub.add_parser("list", help="print the inventory")
     p.add_argument("--filter", choices=FILTERS, default="all")
@@ -101,9 +153,16 @@ def run(argv: list[str]) -> int:
     args = top.parse_args(argv)
 
     if args.verb == "update":
-        summary = update(C.open_driver(args), resolve=args.resolve)
+        with poll_lock(args.wait) as first:
+            if first:
+                summary = update(C.open_driver(args), resolve=args.resolve)
+            else:
+                with Inventory() as inv:
+                    summary = {"skipped": True, "at": inv.meta("last_poll"), "db": str(inv.path)}
         if args.json:
             C.emit_json(summary)
+        elif summary.get("skipped"):
+            print(f"another poll was running; used its result (last poll {summary['at']})")
         else:
             print(
                 f"polled {summary['seen']} device(s); new: {len(summary['new'])}; "
@@ -115,10 +174,12 @@ def run(argv: list[str]) -> int:
     with Inventory() as inv:
         devices = inv.devices(args.filter, parse_since(args.since))
         router = inv.router()
+        last_poll = inv.meta("last_poll")
     if args.json:
         C.emit_json(
             {
                 "generated_at": datetime.now(UTC).replace(microsecond=0).isoformat(),
+                "last_poll": last_poll,
                 "router": router,
                 "devices": devices,
             }

@@ -162,6 +162,7 @@ router alias 02:00:00:00:00:05 --name "3D printer" --icon mdi:printer-3d
 ```json
 {
   "generated_at": "2026-01-01T12:00:00+00:00",
+  "last_poll": "2026-01-01T11:00:00+00:00",
   "router": {"driver": "ubee_evw32c", "model": "EVW32C-0N", "host": "192.168.0.1"},
   "devices": [{
     "mac": "02:00:00:00:00:05", "ip": "192.168.0.50", "hostname": "3D printer",
