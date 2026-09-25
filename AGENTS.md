@@ -28,7 +28,7 @@ fully typed (mypy strict), zero third-party runtime dependencies.
 | `drivers/ubee_evw32c.py` | the Ubee driver: session handling, parsers, write plans |
 | `drivers/ubee_areas.py` | the Ubee web UI as data: pages, forms, field maps, apply flags, list pages, Wi-Fi/WPS JSON |
 | `drivers/openwrt.py` | OpenWrt via rpcd `/ubus` JSON-RPC (session, luci-rpc, iwinfo, uci) |
-| `drivers/miwifi.py` | Xiaomi / Redmi routers and mesh nodes (LuCI JSON API over HTTPS): Wi-Fi clients, node, band, signal, traffic; public `topo_graph` (placement / backhaul); read-only |
+| `drivers/miwifi.py` | Xiaomi / Redmi routers and mesh nodes (LuCI JSON API over HTTPS): Wi-Fi clients, node, band, signal, traffic (root node: `xqsystem/device_list`; every node: `wifi_connect_devices`; `merge_clients`); public `topo_graph` (placement / backhaul); read-only |
 | `drivers/__init__.py` | driver registry, aliases, GET-only `detect` |
 | `models.py` | normalized dataclasses + MAC/IP helpers |
 | `credentials.py` | `credentials.json` (0600/0700, keyed by host, `default`), optional OS keyrings |

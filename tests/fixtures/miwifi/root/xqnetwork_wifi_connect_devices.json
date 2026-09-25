@@ -1,0 +1,80 @@
+{
+ "list": [
+  {
+   "mac": "02:00:00:00:01:0E",
+   "wifiIndex": 1,
+   "signal": 142
+  },
+  {
+   "mac": "02:00:00:00:01:11",
+   "wifiIndex": 1,
+   "signal": 70
+  },
+  {
+   "mac": "02:00:00:00:01:12",
+   "wifiIndex": 1,
+   "signal": 120
+  },
+  {
+   "mac": "02:00:00:00:01:13",
+   "wifiIndex": 1,
+   "signal": 130
+  },
+  {
+   "mac": "02:00:00:00:01:14",
+   "wifiIndex": 1,
+   "signal": 144
+  },
+  {
+   "mac": "02:00:00:00:01:15",
+   "wifiIndex": 1,
+   "signal": 102
+  },
+  {
+   "mac": "02:00:00:00:01:16",
+   "wifiIndex": 2,
+   "signal": 50
+  },
+  {
+   "mac": "02:00:00:00:01:17",
+   "wifiIndex": 2,
+   "signal": 56
+  },
+  {
+   "mac": "02:00:00:00:01:0A",
+   "wifiIndex": 2,
+   "signal": 64
+  },
+  {
+   "mac": "02:00:00:00:01:0F",
+   "wifiIndex": 2,
+   "signal": 52
+  },
+  {
+   "mac": "02:00:00:00:01:18",
+   "wifiIndex": 2,
+   "signal": 54
+  },
+  {
+   "mac": "02:00:00:00:01:06",
+   "wifiIndex": 2,
+   "signal": 48
+  },
+  {
+   "mac": "02:00:00:00:01:10",
+   "wifiIndex": 2,
+   "signal": 82
+  },
+  {
+   "mac": "02:00:00:00:01:08",
+   "wifiIndex": 2,
+   "signal": 78
+  },
+  {
+   "mac": "02:00:00:00:01:0C",
+   "wifiIndex": 2,
+   "signal": 60
+  }
+ ],
+ "code": 0
+}

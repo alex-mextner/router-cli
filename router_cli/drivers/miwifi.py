@@ -11,27 +11,52 @@ PROTOCOL (read-only here)
     ``POST /cgi-bin/luci/api/xqsystem/login``      ``username=admin&logtype=2&nonce=N&
                                                    password=H(N + H(pw + KEY))`` -> ``token``
                                                    (H = SHA-256 when newEncryptMode=1, else SHA-1)
-    ``GET  /cgi-bin/luci/;stok=T/api/misystem/devicelist``   clients: mac, ip, name, type
-                                                   (0 wired, 1 2.4 GHz, 2 5 GHz, 3 guest,
-                                                   6 5 GHz game), parent (mesh node), isap
-    ``GET  /cgi-bin/luci/;stok=T/api/misystem/status``       ``dev``: per-client upload/
-                                                   download totals and current speeds (B/s)
-    ``GET  /cgi-bin/luci/;stok=T/api/xqnetwork/wifi_connect_devices``   signal per client
+    ``GET  /cgi-bin/luci/;stok=T/api/xqsystem/device_list``   the richest client list: mac,
+                                                   ip, name / origin_name, ``parent`` (MAC of
+                                                   the satellite the client is on; "" = this
+                                                   node), ``port`` (0 wired, 1 2.4 GHz, 2 5
+                                                   GHz), ``type`` ("line" | "wifi" | "ap" = on
+                                                   a satellite), ``statistics``: upload /
+                                                   download totals (bytes), upspeed / downspeed
+                                                   (B/s), ``online`` (seconds connected)
+    ``GET  /cgi-bin/luci/;stok=T/api/misystem/devicelist``   the same clients, older shape:
+                                                   ``type`` 0/1/2 (wired / 2.4 / 5), rates
+                                                   but no totals (fallback)
+    ``GET  /cgi-bin/luci/;stok=T/api/misystem/status``       ``hardware.mac``: this node's
+                                                   LAN MAC; ``dev``: totals for some clients
+    ``GET  /cgi-bin/luci/;stok=T/api/xqnetwork/wifi_connect_devices``   the stations
+                                                   associated to THIS node's radios: mac,
+                                                   ``wifiIndex`` (1 2.4 GHz, 2 5 GHz) and
+                                                   ``signal`` (see SIGNAL)
     ``GET  /cgi-bin/luci/api/misystem/topo_graph``  public on current firmware: every node
                                                    (``ip``, ``name``, ``locale`` = the
                                                    placement set in the app, ``hardware``,
                                                    ``mode``; satellites under ``leafs`` with
                                                    ``link_type`` wired/wireless, ``onlines``)
-    ``GET  /cgi-bin/luci/;stok=T/web/logout``      ends the session (kind="logout")
+    ``GET  /cgi-bin/luci/;stok=T/web/logout``      ends the session (kind="logout"; answers
+                                                   with a redirect to the login page)
 
-    Current firmware (1.0.x, RD28 "Mesh System AX3000 NE") answers everything but
-    ``init_info`` on plain HTTP with a redirect to HTTPS (self-signed certificate);
-    ``HttpTransport`` follows it. Over IPv6 link-local the node's nginx wants ``Host:
-    localhost``. Field names follow the firmware's JSON as documented by the open-source
-    integrations (dmamontov/hass-miwifi); parsing is defensive and missing keys become None.
-    ``init_info`` and ``topo_graph`` were verified against a real node; the logged-in client
-    list was written from those integrations and synthetic fixtures: treat per-client signal
-    and traffic as best effort until verified.
+MESH
+    Only the root node (``mode`` 2 in topo_graph, netmode 2) keeps the client list with IPs,
+    names and traffic; a satellite (mode 1, netmode 3) answers ``device_list`` with bare MACs
+    and ``status.dev`` empty. Every node answers ``wifi_connect_devices`` for its own radios,
+    and that list is longer than the root's client list (clients it has no IP for), so a
+    complete picture asks every node and merges by MAC (``merge_clients``). The admin password
+    is shared across the mesh.
+
+SIGNAL
+    ``signal`` is not dBm: it is a positive number (about 40..150), which the web UI only
+    buckets (> 30 "Good"). It reads as twice the SNR over a -95 dBm noise floor: a station
+    that measured the node at -54 dBm (average) was reported as 84 -> 84 / 2 - 95 = -53.
+    ``rssi`` is that estimate; the raw value is kept as ``signal``.
+
+    Verified against firmware 1.0.148 (RD28 "Mesh System AX3000 NE", root + one wired
+    satellite); fixtures under tests/fixtures/miwifi are those answers, anonymised. No
+    endpoint reports the link rate (PHY speed) of a client.
+
+    Current firmware answers everything but ``init_info`` on plain HTTP with a redirect to
+    HTTPS (self-signed certificate); ``HttpTransport`` follows it. Over IPv6 link-local the
+    node's nginx wants ``Host: localhost`` (``HttpTransport(host_header=...)``).
 """
 
 from __future__ import annotations
@@ -55,7 +80,10 @@ KEY = "a2ffa5c9be07488bbb04a3a47d3c5f6a"  # gitleaks:allow
 INIT_INFO = "/cgi-bin/luci/api/xqsystem/init_info"
 TOPO_GRAPH = "/cgi-bin/luci/api/misystem/topo_graph"
 LOGIN = "/cgi-bin/luci/api/xqsystem/login"
+# devicelist ``type`` / device_list ``port`` / wifi_connect_devices ``wifiIndex`` -> band
 BANDS = {0: None, 1: "2.4", 2: "5", 3: "2.4", 6: "5", 7: "6"}
+WIFI_INDEX_BANDS = {1: "2.4", 2: "5", 3: "2.4"}
+NOISE_FLOOR_DBM = -95
 TOKEN_RE = re.compile(r";stok=[0-9a-fA-F]+")
 
 
@@ -69,10 +97,12 @@ class MiClient:
     connection: str = "unknown"  # wired | wifi | unknown
     band: str | None = None  # "2.4" | "5" | "6"
     guest: bool = False
-    via: str | None = None  # MAC of the mesh node / AP the client hangs off
-    rssi: int | None = None
+    via: str | None = None  # LAN MAC of the mesh node the client hangs off
+    rssi: int | None = None  # dBm, estimated from ``signal``
+    signal: int | None = None  # the firmware's raw station signal (not dBm, see SIGNAL)
     online: bool = True
     is_ap: bool = False
+    connected_s: int | None = None  # seconds since the client (re)connected
     rx_bytes: int | None = None  # received BY the client (router "download")
     tx_bytes: int | None = None
     rx_rate: float | None = None  # bytes/s
@@ -94,6 +124,23 @@ def _mac(value: Any) -> str | None:
     return normalize_mac(text) if text and is_mac(text) else None
 
 
+def _name(*values: Any) -> str | None:
+    """The first real name: the firmware fills ``name`` with the MAC when it knows none."""
+    for value in values:
+        text = str(value or "").strip()
+        if text and not is_mac(text):
+            return text
+    return None
+
+
+def signal_to_dbm(signal: Any) -> int | None:
+    """The firmware's station ``signal`` (twice the SNR) as an estimated RSSI in dBm."""
+    value = _int(signal)
+    if value is None or value <= 0:
+        return None
+    return max(-100, min(-10, round(value / 2) + NOISE_FLOOR_DBM))
+
+
 def password_hash(password: str, nonce: str, sha256: bool) -> str:
     h = hashlib.sha256 if sha256 else hashlib.sha1
     # codeql[py/weak-sensitive-data-hashing]
@@ -109,72 +156,146 @@ def make_nonce(device_mac: str | None = None) -> str:
     return f"0_{mac}_{int(time.time())}_{random.randint(0, 9999)}"
 
 
+def _items(payload: dict[str, Any] | None, key: str) -> list[dict[str, Any]]:
+    raw = (payload or {}).get(key)
+    return [x for x in raw if isinstance(x, dict)] if isinstance(raw, list) else []
+
+
+def _dict(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _set_traffic(c: MiClient, stats: dict[str, Any]) -> None:
+    """``upload``/``download`` are from the client's side of the router: the client's
+    upload is what it sent (tx)."""
+    for attr, key in (
+        ("rx_bytes", "download"),
+        ("tx_bytes", "upload"),
+        ("rx_rate", "downspeed"),
+        ("tx_rate", "upspeed"),
+    ):
+        value = _int(stats.get(key))
+        if value is not None:
+            setattr(c, attr, value)
+
+
+def self_mac_of(status: dict[str, Any] | None) -> str | None:
+    """This node's LAN MAC, from ``misystem/status`` (``hardware.mac``)."""
+    hardware = (status or {}).get("hardware")
+    return _mac(hardware.get("mac")) if isinstance(hardware, dict) else None
+
+
 def parse_clients(
     devicelist: dict[str, Any] | None,
     status: dict[str, Any] | None = None,
     wifi: dict[str, Any] | None = None,
     self_mac: str | None = None,
+    device_list: dict[str, Any] | None = None,
 ) -> list[MiClient]:
-    """Merge devicelist + status (traffic) + wifi_connect_devices (signal) by MAC."""
+    """One node's view, merged by MAC: ``xqsystem/device_list`` (preferred) or
+    ``misystem/devicelist`` (names, IPs, node, band, connected time, traffic), ``status.dev``
+    (traffic, where the list had none) and ``wifi_connect_devices`` (who is on this node's
+    radios, band, signal)."""
+    self_mac = self_mac or self_mac_of(status)
     clients: dict[str, MiClient] = {}
-    for item in (devicelist or {}).get("list") or []:
-        if not isinstance(item, dict):
+    rich = [x for x in _items(device_list, "list") if "ip" in x or "statistics" in x]
+    for item in rich:
+        mac = _mac(item.get("mac"))
+        if not mac:
             continue
+        port = _int(item.get("port"))
+        kind = str(item.get("type") or "")
+        stats = _dict(item.get("statistics"))
+        wired = kind == "line" or (port == 0 and kind not in ("wifi", "ap"))
+        wifi_client = not wired and (kind in ("wifi", "ap") or bool(port))
+        c = clients[mac] = MiClient(
+            mac=mac,
+            ip=str(item.get("ip") or "") or None,
+            name=_name(item.get("name"), item.get("origin_name"), item.get("hostname")),
+            connection="wired" if wired else "wifi" if wifi_client else "unknown",
+            band=BANDS.get(port) if wifi_client and port is not None else None,
+            guest=port == 3,
+            via=_mac(item.get("parent")) or self_mac,
+            online=str(item.get("online", "1")) not in ("0", "false", "False"),
+            is_ap=str(item.get("isap", "0")) not in ("0", "", "None", "False"),
+            connected_s=_int(stats.get("online")),
+        )
+        _set_traffic(c, stats)
+    for item in [] if rich else _items(devicelist, "list"):
         mac = _mac(item.get("mac"))
         if not mac:
             continue
         ctype = _int(item.get("type"))
-        raw_ips = item.get("ip")
-        ips: list[Any] = raw_ips if isinstance(raw_ips, list) else []
         ip = None
-        rx_rate = tx_rate = None
-        for entry in ips:
-            if isinstance(entry, dict) and entry.get("ip"):
+        for entry in _items(item, "ip"):
+            if entry.get("ip"):
                 ip = str(entry["ip"])
-                rx_rate = _int(entry.get("downspeed"))
-                tx_rate = _int(entry.get("upspeed"))
                 break
-        stats = item.get("statistics") if isinstance(item.get("statistics"), dict) else {}
-        parent = _mac(item.get("parent"))
-        clients[mac] = MiClient(
+        stats = _dict(item.get("statistics"))
+        c = clients[mac] = MiClient(
             mac=mac,
             ip=ip,
-            name=(str(item.get("name") or item.get("oname") or "").strip() or None),
+            name=_name(item.get("name"), item.get("oname")),
             connection="wired" if ctype == 0 else "wifi" if ctype in BANDS else "unknown",
             band=BANDS.get(ctype) if ctype is not None else None,
             guest=ctype == 3,
-            via=parent or self_mac,
+            via=_mac(item.get("parent")) or self_mac,
             online=str(item.get("online", "1")) not in ("0", "false", "False"),
             is_ap=str(item.get("isap", "0")) not in ("0", "", "None", "False"),
-            rx_rate=_int(stats.get("downspeed")) if stats else rx_rate,
-            tx_rate=_int(stats.get("upspeed")) if stats else tx_rate,
+            connected_s=_int(stats.get("online")),
         )
-    for item in (status or {}).get("dev") or []:
-        if not isinstance(item, dict):
-            continue
+        _set_traffic(c, stats)
+    for item in _items(status, "dev"):
         mac = _mac(item.get("mac"))
         if not mac:
             continue
         c = clients.setdefault(mac, MiClient(mac=mac, via=self_mac))
-        c.name = c.name or (str(item.get("devname") or "").strip() or None)
-        c.rx_bytes = _int(item.get("download"))
-        c.tx_bytes = _int(item.get("upload"))
-        c.rx_rate = _int(item.get("downspeed")) if item.get("downspeed") is not None else c.rx_rate
-        c.tx_rate = _int(item.get("upspeed")) if item.get("upspeed") is not None else c.tx_rate
-    for item in (wifi or {}).get("list") or []:
-        if not isinstance(item, dict):
-            continue
+        c.name = c.name or _name(item.get("devname"))
+        if c.rx_bytes is None:
+            _set_traffic(c, item)
+        if c.connected_s is None:
+            c.connected_s = _int(item.get("online"))
+    for item in _items(wifi, "list"):
         mac = _mac(item.get("mac"))
         if not mac:
             continue
-        c = clients.setdefault(mac, MiClient(mac=mac, connection="wifi", via=self_mac))
-        for key in ("signal", "rssi", "wifi_signal"):
-            value = _int(item.get(key))
-            if value is not None and value < 0:  # dBm; other scales are not guessed
-                c.rssi = value
-                break
+        c = clients.setdefault(mac, MiClient(mac=mac))
         c.connection = "wifi"
+        c.via = self_mac or c.via  # associated to this node's radio, whatever the list said
+        index = _int(item.get("wifiIndex"))
+        c.band = WIFI_INDEX_BANDS.get(index or 0) or c.band
+        c.guest = c.guest or index == 3
+        raw = _int(item.get("signal"))
+        if raw is not None and raw < 0:  # some firmware reports dBm directly
+            c.rssi = raw
+        elif raw:
+            c.signal = raw
+            c.rssi = signal_to_dbm(raw)
     return sorted(clients.values(), key=lambda c: c.mac)
+
+
+def merge_clients(views: list[list[MiClient]]) -> list[MiClient]:
+    """Every node's view in one list. A node that has the client on its own radio (it
+    reported a signal) decides node, band and signal; other fields fill in from any view."""
+    merged: dict[str, MiClient] = {}
+    for view in views:
+        for c in view:
+            have = merged.get(c.mac)
+            if have is None:
+                merged[c.mac] = MiClient(**c.to_json())
+                continue
+            radio = c.rssi is not None and have.rssi is None
+            for key, value in c.to_json().items():
+                if key in ("via", "band", "rssi", "signal", "connection") and radio:
+                    if value is not None:
+                        setattr(have, key, value)
+                elif getattr(have, key) is None and value is not None:
+                    setattr(have, key, value)
+            if have.connection == "unknown":
+                have.connection = c.connection
+            have.guest = have.guest or c.guest
+            have.is_ap = have.is_ap or c.is_ap
+    return sorted(merged.values(), key=lambda c: c.mac)
 
 
 def parse_mesh_nodes(topo: dict[str, Any] | None) -> list[dict[str, Any]]:
@@ -222,13 +343,16 @@ class MiWiFi(BaseDriver):
     notes: ClassVar[list[str]] = [
         "read-only: Wi-Fi clients, mesh node, band, signal, per-client traffic",
         "login: `router login --driver miwifi --host <node> --no-default` (user admin)",
-        "unverified against a logged-in capture: signal/traffic parsing is best effort",
+        "on a mesh the root node has IPs/names/traffic; each node has its own radios' "
+        "stations: `router discover` asks every node (same admin password)",
+        "rssi is estimated from the firmware's signal figure (not reported in dBm)",
     ]
 
     def __init__(self, transport: Transport, credentials: Any = None) -> None:
         super().__init__(transport, credentials)
         self._token: str | None = None
         self._init: dict[str, Any] | None = None
+        self.lan_mac: str | None = None  # this node's LAN MAC, once ``clients`` ran
 
     # ── session ──────────────────────────────────────────────────────────────
     @classmethod
@@ -356,10 +480,18 @@ class MiWiFi(BaseDriver):
         )
 
     def clients(self) -> list[MiClient]:
-        devicelist = self.api("misystem/devicelist")
-        status = self._optional("misystem/status")
+        """This node's view (on a mesh, ``merge_clients`` joins every node's). Three reads;
+        ``misystem/devicelist`` too when ``xqsystem/device_list`` has no client details."""
+        status = self.api("misystem/status")
+        self.lan_mac = self_mac_of(status)
+        device_list = self._optional("xqsystem/device_list")
         wifi = self._optional("xqnetwork/wifi_connect_devices")
-        return parse_clients(devicelist, status, wifi)
+        rich = any(
+            isinstance(x, dict) and ("ip" in x or "statistics" in x)
+            for x in (device_list or {}).get("list") or []
+        )
+        devicelist = None if rich else self._optional("misystem/devicelist")
+        return parse_clients(devicelist, status, wifi, device_list=device_list)
 
     def topo_graph(self) -> dict[str, Any] | None:
         """``misystem/topo_graph`` — public on current firmware (no token), else with one."""
@@ -389,6 +521,7 @@ class MiWiFi(BaseDriver):
                     interface="wifi" if c.connection == "wifi" else "lan",
                     band=f"{c.band}GHz" if c.band else None,
                     rssi_dbm=c.rssi,
+                    connected_s=c.connected_s,
                 )
             )
         return out

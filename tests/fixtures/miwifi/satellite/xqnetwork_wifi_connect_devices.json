@@ -1,0 +1,65 @@
+{
+ "list": [
+  {
+   "mac": "02:00:00:00:01:19",
+   "wifiIndex": 1,
+   "signal": 100
+  },
+  {
+   "mac": "02:00:00:00:01:1A",
+   "wifiIndex": 1,
+   "signal": 120
+  },
+  {
+   "mac": "02:00:00:00:01:03",
+   "wifiIndex": 1,
+   "signal": 116
+  },
+  {
+   "mac": "02:00:00:00:01:1B",
+   "wifiIndex": 2,
+   "signal": 96
+  },
+  {
+   "mac": "02:00:00:00:01:1C",
+   "wifiIndex": 2,
+   "signal": 84
+  },
+  {
+   "mac": "02:00:00:00:01:1D",
+   "wifiIndex": 2,
+   "signal": 116
+  },
+  {
+   "mac": "02:00:00:00:01:0D",
+   "wifiIndex": 2,
+   "signal": 62
+  },
+  {
+   "mac": "02:00:00:00:01:1E",
+   "wifiIndex": 2,
+   "signal": 102
+  },
+  {
+   "mac": "02:00:00:00:01:0B",
+   "wifiIndex": 2,
+   "signal": 56
+  },
+  {
+   "mac": "02:00:00:00:01:05",
+   "wifiIndex": 2,
+   "signal": 44
+  },
+  {
+   "mac": "02:00:00:00:01:09",
+   "wifiIndex": 2,
+   "signal": 56
+  },
+  {
+   "mac": "02:00:00:00:01:04",
+   "wifiIndex": 2,
+   "signal": 112
+  }
+ ],
+ "code": 0
+}

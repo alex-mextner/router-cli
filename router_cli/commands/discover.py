@@ -41,7 +41,7 @@ from .. import credentials, fingerprint, ha_registry
 from .._errors import RouterCliError
 from .._vendor.netprint import MdnsService, Signals, SsdpDevice, classify
 from ..config import db_path
-from ..drivers.miwifi import TOPO_GRAPH, MiClient, MiWiFi, parse_mesh_nodes
+from ..drivers.miwifi import TOPO_GRAPH, MiClient, MiWiFi, merge_clients, parse_mesh_nodes
 from ..http import HttpTransport, is_lan_host, normalize_base, unverified_tls_context
 from ..inventory import Inventory, Sighting, now_iso, to_epoch
 from ..lan import mdns, netbios, netinfo, ssdp, sweep
@@ -188,34 +188,77 @@ def _miwifi_hosts() -> list[str]:
     return [h for h, e in routers.items() if isinstance(e, dict) and e.get("driver") == "miwifi"]
 
 
-def _collect_miwifi(timeout: float = 8.0) -> tuple[str, list[MiClient], list[dict[str, Any]]]:
+def _known_mesh_nodes() -> list[str]:
+    """MACs of the Xiaomi nodes earlier sweeps identified (``miwifi_info``)."""
+    try:
+        with Inventory() as inv:
+            rows = inv.db.execute("SELECT mac FROM discovery WHERE source = 'miwifi_info'")
+            return sorted(str(r["mac"]) for r in rows)
+    except (RouterCliError, OSError):
+        return []
+
+
+def _collect_miwifi(
+    iface: str | None = None,
+    known_nodes: list[str] | None = None,
+    timeout: float = 8.0,
+) -> tuple[str, list[MiClient], list[dict[str, Any]]]:
+    """Every mesh node's client view, merged. The nodes with stored credentials first; then
+    each known node none of them turned out to be, over IPv6 link-local (a node's IPv4
+    address may be shared with another device) with the first node's credentials: the admin
+    password is the same across a Xiaomi mesh, and only the root has IPs, names and traffic.
+    One login per node per run, ended with a logout."""
     hosts = _miwifi_hosts()
     if not hosts:
         return "no-credentials", [], []
-    clients: dict[str, MiClient] = {}
+    views: list[list[MiClient]] = []
     nodes: list[dict[str, Any]] = []
     errors: list[str] = []
+    covered: set[str] = set()
+    fallback: tuple[str, str] | None = None
+    targets: list[tuple[str, str, str | None, tuple[str, str] | None]] = []
     for host in hosts:
         base = normalize_base(host)
         entry = credentials.entry(base)
         user = (entry.username if entry else "") or "admin"
+        targets.append((host, base, None, (base, user)))
+    if iface:
+        for nmac in known_nodes if known_nodes is not None else _known_mesh_nodes():
+            ll = link_local(nmac, iface)
+            targets.append((nmac, f"https://[{ll}]", "localhost", None))
 
-        def creds(base: str = base, user: str = user) -> tuple[str, str] | None:
-            secret = credentials.password_for(base, "miwifi", user)
-            return (user, secret) if secret else None
+    def run(label: str, base: str, host_header: str | None, key: tuple[str, str] | None) -> None:
+        nonlocal fallback
 
-        driver = MiWiFi(HttpTransport(base, timeout=timeout), creds)
+        def creds() -> tuple[str, str] | None:
+            if key is None:
+                return fallback
+            secret = credentials.password_for(key[0], "miwifi", key[1])
+            return (key[1], secret) if secret else None
+
+        transport = HttpTransport(base, timeout=timeout, host_header=host_header)
+        driver = MiWiFi(transport, creds)
         try:
-            for client in driver.clients():
-                clients.setdefault(client.mac, client)
+            view = driver.clients()
+            if key is not None and fallback is None:
+                fallback = creds()
+            if driver.lan_mac:
+                covered.add(driver.lan_mac)
+            views.append(view)
             nodes.extend(driver.mesh_nodes())
         except RouterCliError as exc:
-            errors.append(f"{host}: {exc.what}")
+            errors.append(f"{label}: {exc.what}")
         finally:
             with contextlib.suppress(RouterCliError):
                 driver.end_session()
+
+    for label, base, host_header, key in targets:
+        if key is None and (label in covered or fallback is None):
+            continue  # already asked by its address, or no working credentials to reuse
+        run(label, base, host_header, key)
+    clients = merge_clients(views)
     status = "ok" if not errors else ("partial: " if clients else "error: ") + "; ".join(errors)
-    return status, list(clients.values()), nodes
+    return status, clients, nodes
 
 
 def _mdns_service(svc: dict[str, Any]) -> MdnsService:
@@ -336,7 +379,7 @@ def discover(args: Any) -> dict[str, Any]:
         box["ssdp"] = ssdp.search(net.ip, 3.0)
 
     def run_miwifi() -> None:
-        box["miwifi"] = _collect_miwifi()
+        box["miwifi"] = _collect_miwifi(net.iface)
 
     threads = []
     if not args.no_ssdp:
@@ -569,6 +612,8 @@ def discover(args: Any) -> dict[str, Any]:
             "band": c.band,
             "via": c.via,
             "rssi": c.rssi,
+            "signal": c.signal,
+            "connected_s": c.connected_s,
             "is_ap": int(c.is_ap),
             "guest": int(c.guest),
         }

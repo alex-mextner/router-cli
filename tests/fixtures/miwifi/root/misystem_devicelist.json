@@ -1,0 +1,426 @@
+{
+ "mac": "",
+ "list": [
+  {
+   "mac": "02:00:00:00:01:03",
+   "oname": "",
+   "isap": 0,
+   "pctlv2": 0,
+   "parent": "02:00:00:00:00:A1",
+   "authority": {
+    "wan": 1
+   },
+   "push": 0,
+   "online": 1,
+   "name": "02:00:00:00:01:03",
+   "times": 0,
+   "ip": [
+    {
+     "downspeed": "0",
+     "online": "5445",
+     "active": 1,
+     "upspeed": "0",
+     "ip": "10.9.8.102"
+    }
+   ],
+   "statistics": {
+    "downspeed": "0",
+    "online": "5445",
+    "upspeed": "0"
+   },
+   "icon": "",
+   "type": 1
+  },
+  {
+   "mac": "02:00:00:00:01:04",
+   "oname": "device-1",
+   "isap": 0,
+   "pctlv2": 0,
+   "parent": "02:00:00:00:00:A1",
+   "authority": {
+    "wan": 1
+   },
+   "push": 0,
+   "online": 1,
+   "name": "device-1",
+   "times": 0,
+   "ip": [
+    {
+     "downspeed": "0",
+     "online": "6796",
+     "active": 1,
+     "upspeed": "21",
+     "ip": "10.9.8.103"
+    }
+   ],
+   "statistics": {
+    "downspeed": "0",
+    "online": "6796",
+    "upspeed": "21"
+   },
+   "icon": "",
+   "type": 2
+  },
+  {
+   "mac": "02:00:00:00:01:05",
+   "oname": "",
+   "isap": 0,
+   "pctlv2": 0,
+   "parent": "02:00:00:00:00:A1",
+   "authority": {
+    "wan": 1
+   },
+   "push": 0,
+   "online": 1,
+   "name": "02:00:00:00:01:05",
+   "times": 0,
+   "ip": [
+    {
+     "downspeed": "0",
+     "online": "6796",
+     "active": 1,
+     "upspeed": "0",
+     "ip": "10.9.8.104"
+    }
+   ],
+   "statistics": {
+    "downspeed": "0",
+    "online": "6796",
+    "upspeed": "0"
+   },
+   "icon": "",
+   "type": 2
+  },
+  {
+   "mac": "02:00:00:00:01:06",
+   "oname": "",
+   "isap": 0,
+   "pctlv2": 0,
+   "parent": "",
+   "authority": {
+    "wan": 1
+   },
+   "push": 0,
+   "online": 1,
+   "name": "02:00:00:00:01:06",
+   "times": 0,
+   "ip": [
+    {
+     "downspeed": "0",
+     "online": "331938",
+     "active": 1,
+     "upspeed": "0",
+     "ip": "10.9.8.105"
+    }
+   ],
+   "statistics": {
+    "downspeed": "0",
+    "online": "331938",
+    "upspeed": "0"
+   },
+   "icon": "",
+   "type": 2
+  },
+  {
+   "mac": "02:00:00:00:01:07",
+   "oname": "",
+   "isap": 0,
+   "pctlv2": 0,
+   "parent": "",
+   "authority": {
+    "wan": 1
+   },
+   "push": 0,
+   "online": 1,
+   "name": "02:00:00:00:01:07",
+   "times": 0,
+   "ip": [
+    {
+     "downspeed": "428",
+     "online": "44291",
+     "active": 1,
+     "upspeed": "639",
+     "ip": "10.9.8.106"
+    }
+   ],
+   "statistics": {
+    "downspeed": "428",
+    "online": "44291",
+    "upspeed": "639"
+   },
+   "icon": "",
+   "type": 0
+  },
+  {
+   "mac": "02:00:00:00:01:08",
+   "oname": "",
+   "isap": 0,
+   "pctlv2": 0,
+   "parent": "",
+   "authority": {
+    "wan": 1
+   },
+   "push": 0,
+   "online": 1,
+   "name": "02:00:00:00:01:08",
+   "times": 0,
+   "ip": [
+    {
+     "downspeed": "29",
+     "online": "326924",
+     "active": 1,
+     "upspeed": "49",
+     "ip": "10.9.8.107"
+    }
+   ],
+   "statistics": {
+    "downspeed": "29",
+    "online": "326924",
+    "upspeed": "49"
+   },
+   "icon": "",
+   "type": 2
+  },
+  {
+   "mac": "02:00:00:00:01:09",
+   "oname": "",
+   "isap": 0,
+   "pctlv2": 0,
+   "parent": "02:00:00:00:00:A1",
+   "authority": {
+    "wan": 1
+   },
+   "push": 0,
+   "online": 1,
+   "name": "02:00:00:00:01:09",
+   "times": 0,
+   "ip": [
+    {
+     "downspeed": "0",
+     "online": "6796",
+     "active": 1,
+     "upspeed": "0",
+     "ip": "10.9.8.108"
+    }
+   ],
+   "statistics": {
+    "downspeed": "0",
+    "online": "6796",
+    "upspeed": "0"
+   },
+   "icon": "",
+   "type": 2
+  },
+  {
+   "mac": "02:00:00:00:01:0A",
+   "oname": "",
+   "isap": 0,
+   "pctlv2": 0,
+   "parent": "",
+   "authority": {
+    "wan": 1
+   },
+   "push": 0,
+   "online": 1,
+   "name": "02:00:00:00:01:0A",
+   "times": 0,
+   "ip": [
+    {
+     "downspeed": "0",
+     "online": "332200",
+     "active": 1,
+     "upspeed": "0",
+     "ip": "10.9.8.109"
+    }
+   ],
+   "statistics": {
+    "downspeed": "0",
+    "online": "332200",
+    "upspeed": "0"
+   },
+   "icon": "",
+   "type": 2
+  },
+  {
+   "mac": "02:00:00:00:01:0B",
+   "oname": "",
+   "isap": 0,
+   "pctlv2": 0,
+   "parent": "02:00:00:00:00:A1",
+   "authority": {
+    "wan": 1
+   },
+   "push": 0,
+   "online": 1,
+   "name": "02:00:00:00:01:0B",
+   "times": 0,
+   "ip": [
+    {
+     "downspeed": "0",
+     "online": "6796",
+     "active": 1,
+     "upspeed": "0",
+     "ip": "10.9.8.110"
+    }
+   ],
+   "statistics": {
+    "downspeed": "0",
+    "online": "6796",
+    "upspeed": "0"
+   },
+   "icon": "",
+   "type": 2
+  },
+  {
+   "mac": "02:00:00:00:01:0C",
+   "oname": "",
+   "isap": 0,
+   "pctlv2": 0,
+   "parent": "",
+   "authority": {
+    "wan": 1
+   },
+   "push": 0,
+   "online": 1,
+   "name": "02:00:00:00:01:0C",
+   "times": 0,
+   "ip": [
+    {
+     "downspeed": "0",
+     "online": "5188",
+     "active": 1,
+     "upspeed": "10",
+     "ip": "10.9.8.111"
+    }
+   ],
+   "statistics": {
+    "downspeed": "0",
+    "online": "5188",
+    "upspeed": "10"
+   },
+   "icon": "",
+   "type": 2
+  },
+  {
+   "mac": "02:00:00:00:01:0D",
+   "oname": "device-2",
+   "isap": 0,
+   "pctlv2": 0,
+   "parent": "02:00:00:00:00:A1",
+   "authority": {
+    "wan": 1
+   },
+   "push": 0,
+   "online": 1,
+   "name": "device-2",
+   "times": 0,
+   "ip": [
+    {
+     "downspeed": "0",
+     "online": "2714",
+     "active": 1,
+     "upspeed": "0",
+     "ip": "10.9.8.112"
+    }
+   ],
+   "statistics": {
+    "downspeed": "0",
+    "online": "2714",
+    "upspeed": "0"
+   },
+   "icon": "",
+   "type": 2
+  },
+  {
+   "mac": "02:00:00:00:01:0E",
+   "oname": "",
+   "isap": 0,
+   "pctlv2": 0,
+   "parent": "",
+   "authority": {
+    "wan": 1
+   },
+   "push": 0,
+   "online": 1,
+   "name": "02:00:00:00:01:0E",
+   "times": 0,
+   "ip": [
+    {
+     "downspeed": "0",
+     "online": "324865",
+     "active": 1,
+     "upspeed": "0",
+     "ip": "10.9.8.113"
+    }
+   ],
+   "statistics": {
+    "downspeed": "0",
+    "online": "324865",
+    "upspeed": "0"
+   },
+   "icon": "",
+   "type": 1
+  },
+  {
+   "mac": "02:00:00:00:01:0F",
+   "oname": "",
+   "isap": 0,
+   "pctlv2": 0,
+   "parent": "",
+   "authority": {
+    "wan": 1
+   },
+   "push": 0,
+   "online": 1,
+   "name": "02:00:00:00:01:0F",
+   "times": 0,
+   "ip": [
+    {
+     "downspeed": "0",
+     "online": "64826",
+     "active": 1,
+     "upspeed": "0",
+     "ip": "10.9.8.114"
+    }
+   ],
+   "statistics": {
+    "downspeed": "0",
+    "online": "64826",
+    "upspeed": "0"
+   },
+   "icon": "",
+   "type": 2
+  },
+  {
+   "mac": "02:00:00:00:01:10",
+   "oname": "",
+   "isap": 0,
+   "pctlv2": 0,
+   "parent": "",
+   "authority": {
+    "wan": 1
+   },
+   "push": 0,
+   "online": 1,
+   "name": "02:00:00:00:01:10",
+   "times": 0,
+   "ip": [
+    {
+     "downspeed": "26129",
+     "online": "334003",
+     "active": 1,
+     "upspeed": "262775",
+     "ip": "10.9.8.115"
+    }
+   ],
+   "statistics": {
+    "downspeed": "26129",
+    "online": "334003",
+    "upspeed": "262775"
+   },
+   "icon": "",
+   "type": 2
+  }
+ ],
+ "code": 0
+}

@@ -226,6 +226,12 @@ per-client counters. With the mesh's admin password stored, `discover` reads it 
 router login --driver miwifi --host 192.168.31.1 --no-default   # the main mesh node
 ```
 
+One node's password is enough: the admin password is shared across a Xiaomi mesh, and
+`discover` also asks every other node it knows (over IPv6 link-local, so a node whose IPv4
+address another device answers for is still reached) — the root node has IPs, names, connected
+time and traffic, each node the band and signal of the stations on its own radios. `rssi` is
+an estimate (the firmware reports a signal figure, not dBm); no endpoint gives the link rate.
+
 (An access point never becomes the default router. Xiaomi firmware redirects its web API to
 HTTPS with a self-signed certificate: router-cli follows that same-host upgrade and does not
 verify certificates of private addresses.) Even without a password, every node's public
@@ -348,7 +354,7 @@ OpenWrt a JSON-RPC one.
 | --- | --- | --- |
 | Ubee EVW32C-0N / EVW32C-0S (cable gateway, Broadcom firmware) | `ubee_evw32c` (alias `ubee`) | every page mapped; reads verified live; writes built from live forms, verified against captures |
 | OpenWrt with LuCI (rpcd `/ubus` JSON-RPC) | `openwrt` | status, devices, leases, reservations, port forwards, uci areas; verified against fixtures only |
-| Xiaomi / Redmi routers and mesh systems (LuCI JSON API; access-point mode too) | `miwifi` (alias `xiaomi`) | read-only: Wi-Fi clients, mesh node, band, signal, per-client traffic; login verified by fixtures only |
+| Xiaomi / Redmi routers and mesh systems (LuCI JSON API; access-point mode too) | `miwifi` (alias `xiaomi`) | read-only: Wi-Fi clients, mesh node, band, signal, connected time, per-client traffic; verified on a 2-node Mesh System AX3000 NE (firmware 1.0.148) |
 
 `router drivers` prints the full capability matrix; `router detect` identifies a host without
 logging in.

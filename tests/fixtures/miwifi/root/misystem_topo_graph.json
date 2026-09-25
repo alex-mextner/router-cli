@@ -1,0 +1,33 @@
+{
+ "show": 1,
+ "graph": {
+  "ssid": "synth",
+  "color": 101,
+  "ip": "10.9.8.2",
+  "locale": "Study",
+  "renumber": 1,
+  "name": "device-4",
+  "channel": "release",
+  "hardware": "RD28",
+  "mode": 2,
+  "leafs": [
+   {
+    "ssid": "c3ludGg=",
+    "color": 101,
+    "onlines": 12,
+    "internet": 0,
+    "ip": "10.9.8.3",
+    "locale": "Study",
+    "link_type": "wired",
+    "name": "device-5",
+    "channel": "release",
+    "hardware": "RD28",
+    "mode": 1,
+    "version": "",
+    "signal": 2
+   }
+  ],
+  "onlines": "16"
+ },
+ "code": 0
+}

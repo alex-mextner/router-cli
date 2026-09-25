@@ -9,14 +9,25 @@ import socket
 import struct
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from router_cli import fingerprint, ha_registry, icons
 from router_cli import scan as scanmod
 from router_cli._errors import NotLoggedInError
+from router_cli.commands import discover
 from router_cli.commands.discover import _near, _wifi_via
-from router_cli.drivers.miwifi import KEY, MiWiFi, parse_clients, parse_mesh_nodes, password_hash
+from router_cli.drivers.miwifi import (
+    KEY,
+    MiClient,
+    MiWiFi,
+    merge_clients,
+    parse_clients,
+    parse_mesh_nodes,
+    password_hash,
+    signal_to_dbm,
+)
 from router_cli.http import HttpRequest, check_path
 from router_cli.inventory import GRACE_S, Inventory, Sighting, from_epoch
 from router_cli.lan import mdns, netbios, ssdp
@@ -143,10 +154,9 @@ STATUS = {"dev": [{"mac": "02:00:00:00:00:11", "upload": "1000", "download": "50
 WIFI = {"list": [{"mac": "02:00:00:00:00:11", "signal": -61}]}
 
 
-def test_miwifi_parse_clients() -> None:
-    clients = {
-        c.mac: c for c in parse_clients(DEVICELIST, STATUS, WIFI, self_mac="02:00:00:00:00:20")
-    }
+def test_miwifi_parse_clients_older_shape() -> None:
+    """``misystem/devicelist`` + ``status.dev`` + a firmware that reports dBm directly."""
+    clients = {c.mac: c for c in parse_clients(DEVICELIST, STATUS, WIFI)}
     phone = clients["02:00:00:00:00:11"]
     assert (phone.connection, phone.band, phone.via, phone.rssi) == (
         "wifi",
@@ -156,8 +166,11 @@ def test_miwifi_parse_clients() -> None:
     )
     assert (phone.rx_bytes, phone.tx_bytes, phone.rx_rate, phone.tx_rate) == (5000, 1000, 7, 3)
     assert clients["02:00:00:00:00:12"].connection == "wired"
-    assert clients["02:00:00:00:00:12"].via == "02:00:00:00:00:20"
+    assert clients["02:00:00:00:00:12"].via is None
     assert clients["02:00:00:00:00:21"].is_ap
+    # a station on this node's radio is on this node, whatever the list's parent says
+    on_node = parse_clients(DEVICELIST, STATUS, WIFI, self_mac="02:00:00:00:00:20")
+    assert {c.mac: c for c in on_node}["02:00:00:00:00:11"].via == "02:00:00:00:00:20"
     nodes = parse_mesh_nodes(
         {
             "graph": {
@@ -169,6 +182,141 @@ def test_miwifi_parse_clients() -> None:
         }
     )
     assert [n["name"] for n in nodes] == ["main", "satellite"]
+
+
+MIWIFI = Path(__file__).parent / "fixtures" / "miwifi"
+ROOT_NODE, SAT_NODE = "02:00:00:00:00:a0", "02:00:00:00:00:a1"
+
+
+def mi_fixture(node: str) -> dict[str, Any]:
+    """Real answers of firmware 1.0.148 (root / wired satellite), anonymised."""
+    return {p.stem: json.loads(p.read_text()) for p in (MIWIFI / node).glob("*.json")}
+
+
+def mi_view(node: str) -> list[MiClient]:
+    d = mi_fixture(node)
+    return parse_clients(
+        d["misystem_devicelist"],
+        d["misystem_status"],
+        d["xqnetwork_wifi_connect_devices"],
+        device_list=d["xqsystem_device_list"],
+    )
+
+
+def test_miwifi_real_root_and_satellite_answers() -> None:
+    root = {c.mac: c for c in mi_view("root")}
+    sat = {c.mac: c for c in mi_view("satellite")}
+    # the root has IPs, names, traffic and the node of every client it knows
+    speaker = root["02:00:00:00:01:04"]
+    assert (speaker.ip, speaker.name, speaker.via, speaker.band) == (
+        "10.9.8.103",
+        "device-1",
+        SAT_NODE,
+        "5",
+    )
+    assert (speaker.rx_bytes, speaker.tx_bytes, speaker.tx_rate) == (519436248, 83174777, 21)
+    assert speaker.connected_s == 6799 and speaker.rssi is None  # not on the root's radio
+    wired = root["02:00:00:00:01:07"]
+    assert (wired.connection, wired.band, wired.via) == ("wired", None, ROOT_NODE)
+    busy = root["02:00:00:00:01:10"]
+    assert (busy.via, busy.band, busy.signal, busy.rssi) == (ROOT_NODE, "5", 82, -54)
+    assert (busy.rx_rate, busy.tx_rate) == (28837, 125497)
+    # a satellite knows only its own stations: MAC, band, signal
+    assert all(c.ip is None and c.via == SAT_NODE for c in sat.values())
+    assert (sat["02:00:00:00:01:04"].band, sat["02:00:00:00:01:04"].rssi) == ("5", -39)
+    assert sat["02:00:00:00:01:03"].band == "2.4"
+
+
+def test_miwifi_views_merge() -> None:
+    merged = {c.mac: c for c in merge_clients([mi_view("root"), mi_view("satellite")])}
+    assert len(merged) == 28
+    speaker = merged["02:00:00:00:01:04"]
+    assert (speaker.ip, speaker.via, speaker.band, speaker.rssi, speaker.signal) == (
+        "10.9.8.103",
+        SAT_NODE,
+        "5",
+        -39,
+        112,
+    )
+    assert speaker.rx_bytes == 519436248
+    assert sum(1 for c in merged.values() if c.rssi is not None) == 27  # all but the wired one
+    assert sum(1 for c in merged.values() if c.rx_bytes is not None) == 14
+    # the order of the views does not matter, nor a view seen twice
+    again = merge_clients([mi_view("satellite"), mi_view("root"), mi_view("root")])
+    assert [c.to_json() for c in again] == [c.to_json() for c in merged.values()]
+
+
+def test_miwifi_signal_estimate() -> None:
+    assert signal_to_dbm(84) == -53  # a station that measured the node at -54 dBm
+    assert signal_to_dbm(0) is None and signal_to_dbm("x") is None
+    assert signal_to_dbm(400) == -10
+
+
+class MeshFake:
+    """One mesh node serving the fixtures (a logged-in session is needed for all but the
+    public init_info and topo_graph)."""
+
+    def __init__(self, node: str, base_url: str) -> None:
+        self.node = node
+        self.base_url = base_url
+        self.data = mi_fixture(node)
+        self.gets: list[str] = []
+        self.sent: list[HttpRequest] = []
+
+    def get(self, path: str) -> str:
+        check_path(path)
+        self.gets.append(path)
+        if path.endswith("init_info"):
+            return json.dumps({"model": "xiaomi.router.synth", "newEncryptMode": 1})
+        name = path.rsplit("/api/", 1)[-1].replace("/", "_")
+        if ";stok=" not in path and name != "misystem_topo_graph":
+            return json.dumps({"code": 401})
+        return json.dumps(self.data.get(name, {"code": 404}))
+
+    def send(self, request: HttpRequest) -> str:
+        self.sent.append(request)
+        if request.kind == "logout":
+            return ""
+        assert request.kind == "login"
+        return json.dumps({"code": 0, "token": "0123abcd"})
+
+
+def test_miwifi_driver_reads_a_node() -> None:
+    fake = MeshFake("root", "http://10.9.8.2")
+    driver = MiWiFi(fake, lambda: ("admin", "secret"))
+    clients = driver.clients()
+    assert driver.lan_mac == ROOT_NODE and len(clients) == 22
+    assert not any("misystem/devicelist" in g for g in fake.gets)  # device_list sufficed
+    sat = MeshFake("satellite", "http://10.9.8.3")
+    MiWiFi(sat, lambda: ("admin", "secret")).clients()
+    assert any("misystem/devicelist" in g for g in sat.gets)  # bare device_list: fallback
+    (device,) = [d for d in driver.devices() if d.mac == "02:00:00:00:01:10"]
+    assert (device.band, device.rssi_dbm, device.connected_s) == ("5GHz", -54, 334006)
+
+
+def test_discover_asks_every_mesh_node(monkeypatch: pytest.MonkeyPatch) -> None:
+    fakes: dict[str, MeshFake] = {}
+
+    def transport(base: str, timeout: float = 8.0, host_header: str | None = None) -> MeshFake:
+        if base.startswith("https://[fe80::"):
+            assert host_header == "localhost"
+        node = "root" if base.endswith("a0%eth0]") else "satellite"
+        fakes[base] = MeshFake(node, base)
+        return fakes[base]
+
+    monkeypatch.setattr(discover, "_miwifi_hosts", lambda: ["10.9.8.3"])
+    monkeypatch.setattr(discover.credentials, "entry", lambda base: None)
+    monkeypatch.setattr(discover.credentials, "password_for", lambda *a: "secret")
+    monkeypatch.setattr(discover, "HttpTransport", transport)
+    status, clients, _nodes = discover._collect_miwifi("eth0", [ROOT_NODE, SAT_NODE])
+    assert status == "ok" and len(clients) == 28
+    # the satellite by its stored address, the root over link-local; the satellite not twice
+    assert sorted(fakes) == ["http://10.9.8.3", "https://[fe80::0:ff:fe00:a0%eth0]"]
+    assert all(f.sent[-1].kind == "logout" for f in fakes.values())
+    assert all(sum(r.kind == "login" for r in f.sent) == 1 for f in fakes.values())
+    # no credentials stored at all: no mesh node is asked
+    monkeypatch.setattr(discover, "_miwifi_hosts", lambda: [])
+    assert discover._collect_miwifi("eth0", [ROOT_NODE]) == ("no-credentials", [], [])
 
 
 def test_miwifi_password_hash() -> None:

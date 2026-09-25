@@ -1,0 +1,141 @@
+{
+ "dev": [
+  {
+   "mac": "02:00:00:00:01:10",
+   "maxdownloadspeed": "39799948",
+   "isap": 0,
+   "upload": "111908488884",
+   "upspeed": "262775",
+   "downspeed": "26129",
+   "online": "334004",
+   "devname": "02:00:00:00:01:10",
+   "maxuploadspeed": "7307753",
+   "download": "126591116508"
+  },
+  {
+   "mac": "02:00:00:00:01:07",
+   "maxdownloadspeed": "26180044",
+   "isap": 0,
+   "upload": "3843428437",
+   "upspeed": "639",
+   "downspeed": "428",
+   "online": "44291",
+   "devname": "02:00:00:00:01:07",
+   "maxuploadspeed": "1660359",
+   "download": "7681374988"
+  },
+  {
+   "mac": "02:00:00:00:01:06",
+   "maxdownloadspeed": "11992148",
+   "isap": 0,
+   "upload": "59657699",
+   "upspeed": "0",
+   "downspeed": "0",
+   "online": "331939",
+   "devname": "02:00:00:00:01:06",
+   "maxuploadspeed": "114362",
+   "download": "1406145041"
+  },
+  {
+   "mac": "02:00:00:00:01:05",
+   "maxdownloadspeed": "18723830",
+   "isap": 0,
+   "upload": "44583784",
+   "upspeed": "0",
+   "downspeed": "0",
+   "online": "6797",
+   "devname": "02:00:00:00:01:05",
+   "maxuploadspeed": "395262",
+   "download": "732673271"
+  },
+  {
+   "mac": "02:00:00:00:01:04",
+   "maxdownloadspeed": "11297321",
+   "isap": 0,
+   "upload": "83174667",
+   "upspeed": "21",
+   "downspeed": "0",
+   "online": "6797",
+   "devname": "device-1",
+   "maxuploadspeed": "100485",
+   "download": "519436248"
+  },
+  {
+   "mac": "02:00:00:00:01:08",
+   "maxdownloadspeed": "10651161",
+   "isap": 0,
+   "upload": "112862660",
+   "upspeed": "49",
+   "downspeed": "29",
+   "online": "326925",
+   "devname": "02:00:00:00:01:08",
+   "maxuploadspeed": "63774",
+   "download": "191897776"
+  },
+  {
+   "mac": "02:00:00:00:01:0A",
+   "maxdownloadspeed": "2389812",
+   "isap": 0,
+   "upload": "10750007",
+   "upspeed": "0",
+   "downspeed": "0",
+   "online": "332200",
+   "devname": "02:00:00:00:01:0A",
+   "maxuploadspeed": "106377",
+   "download": "128639766"
+  },
+  {
+   "mac": "02:00:00:00:01:0F",
+   "maxdownloadspeed": "657672",
+   "isap": 0,
+   "upload": "15664321",
+   "upspeed": "0",
+   "downspeed": "0",
+   "online": "64827",
+   "devname": "02:00:00:00:01:0F",
+   "maxuploadspeed": "37839",
+   "download": "50328227"
+  },
+  {
+   "mac": "02:00:00:00:01:0C",
+   "maxdownloadspeed": "1737542",
+   "isap": 0,
+   "upload": "1064462",
+   "upspeed": "10",
+   "downspeed": "0",
+   "online": "5189",
+   "devname": "02:00:00:00:01:0C",
+   "maxuploadspeed": "88026",
+   "download": "11546187"
+  },
+  {
+   "mac": "",
+   "maxdownloadspeed": "0",
+   "upload": 445661229,
+   "download": 826852,
+   "ip": "",
+   "downspeed": 0,
+   "online": "0",
+   "devname": "device-3",
+   "maxuploadspeed": "0",
+   "upspeed": 0
+  }
+ ],
+ "code": 0,
+ "count": {
+  "all_without_mash": 48,
+  "online": 14,
+  "all": 49,
+  "online_without_mash": 14
+ },
+ "hardware": {
+  "mac": "02:00:00:00:00:A0",
+  "platform": "RD28",
+  "version": "1.0.148",
+  "channel": "release",
+  "ispName": "",
+  "DisplayRomVer": "1.0.148",
+  "displayName": "Xiaomi Mesh System AX3000 NE"
+ },
+ "upTime": "8220952.27"
+}

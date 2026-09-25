@@ -1,0 +1,622 @@
+{
+ "mac": "",
+ "list": [
+  {
+   "isap": 0,
+   "parent": "02:00:00:00:00:A1",
+   "ip": "10.9.8.102",
+   "port": 1,
+   "hostname": "",
+   "mac": "02:00:00:00:01:03",
+   "origin_name": "",
+   "ptype": 0,
+   "authority": {
+    "wan": 1,
+    "pridisk": 0,
+    "admin": 1,
+    "lan": 1
+   },
+   "company": {
+    "priority": 2,
+    "type": {
+     "p": 0,
+     "c": 0,
+     "n": ""
+    },
+    "name": "",
+    "icon": ""
+   },
+   "push": 0,
+   "name": "02:00:00:00:01:03",
+   "times": 0,
+   "type": "ap",
+   "statistics": {
+    "mac": "02:00:00:00:01:03",
+    "maxdownloadspeed": "0",
+    "upload": "0",
+    "upspeed": "0",
+    "ip": "10.9.8.102",
+    "downspeed": "0",
+    "online": "5448",
+    "dev": "wl1",
+    "maxuploadspeed": "0",
+    "download": "0"
+   },
+   "ctype": 0,
+   "online": 1
+  },
+  {
+   "isap": 0,
+   "parent": "02:00:00:00:00:A1",
+   "ip": "10.9.8.103",
+   "port": 2,
+   "hostname": "",
+   "mac": "02:00:00:00:01:04",
+   "origin_name": "device-1",
+   "ptype": 0,
+   "authority": {
+    "wan": 1,
+    "pridisk": 0,
+    "admin": 1,
+    "lan": 1
+   },
+   "company": {
+    "priority": 2,
+    "type": {
+     "p": 0,
+     "c": 0,
+     "n": ""
+    },
+    "name": "",
+    "icon": ""
+   },
+   "push": 0,
+   "name": "device-1",
+   "times": 0,
+   "type": "ap",
+   "statistics": {
+    "mac": "02:00:00:00:01:04",
+    "maxdownloadspeed": "11297321",
+    "upload": "83174777",
+    "upspeed": "21",
+    "ip": "10.9.8.103",
+    "downspeed": "0",
+    "online": "6799",
+    "dev": "wl0",
+    "maxuploadspeed": "100485",
+    "download": "519436248"
+   },
+   "ctype": 0,
+   "online": 1
+  },
+  {
+   "isap": 0,
+   "parent": "02:00:00:00:00:A1",
+   "ip": "10.9.8.104",
+   "port": 2,
+   "hostname": "",
+   "mac": "02:00:00:00:01:05",
+   "origin_name": "",
+   "ptype": 0,
+   "authority": {
+    "wan": 1,
+    "pridisk": 0,
+    "admin": 1,
+    "lan": 1
+   },
+   "company": {
+    "priority": 2,
+    "type": {
+     "p": 0,
+     "c": 0,
+     "n": ""
+    },
+    "name": "",
+    "icon": ""
+   },
+   "push": 0,
+   "name": "02:00:00:00:01:05",
+   "times": 0,
+   "type": "ap",
+   "statistics": {
+    "mac": "02:00:00:00:01:05",
+    "maxdownloadspeed": "18723830",
+    "upload": "44583784",
+    "upspeed": "0",
+    "ip": "10.9.8.104",
+    "downspeed": "0",
+    "online": "6799",
+    "dev": "wl0",
+    "maxuploadspeed": "395262",
+    "download": "732673271"
+   },
+   "ctype": 0,
+   "online": 1
+  },
+  {
+   "isap": 0,
+   "parent": "",
+   "ip": "10.9.8.105",
+   "port": 2,
+   "hostname": "",
+   "mac": "02:00:00:00:01:06",
+   "origin_name": "",
+   "ptype": 0,
+   "authority": {
+    "wan": 1,
+    "pridisk": 0,
+    "admin": 1,
+    "lan": 1
+   },
+   "company": {
+    "priority": 2,
+    "type": {
+     "p": 0,
+     "c": 0,
+     "n": ""
+    },
+    "name": "",
+    "icon": ""
+   },
+   "push": 0,
+   "name": "02:00:00:00:01:06",
+   "times": 0,
+   "type": "wifi",
+   "statistics": {
+    "mac": "02:00:00:00:01:06",
+    "maxdownloadspeed": "11992148",
+    "upload": "59657699",
+    "upspeed": "0",
+    "ip": "10.9.8.105",
+    "downspeed": "0",
+    "online": "331941",
+    "dev": "wl0",
+    "maxuploadspeed": "114362",
+    "download": "1406145041"
+   },
+   "ctype": 0,
+   "online": 1
+  },
+  {
+   "isap": 0,
+   "parent": "",
+   "ip": "10.9.8.106",
+   "port": 0,
+   "hostname": "",
+   "mac": "02:00:00:00:01:07",
+   "origin_name": "",
+   "ptype": 0,
+   "authority": {
+    "wan": 1,
+    "pridisk": 0,
+    "admin": 1,
+    "lan": 1
+   },
+   "company": {
+    "priority": 2,
+    "type": {
+     "p": 0,
+     "c": 0,
+     "n": ""
+    },
+    "name": "",
+    "icon": ""
+   },
+   "push": 0,
+   "name": "02:00:00:00:01:07",
+   "times": 0,
+   "type": "line",
+   "statistics": {
+    "mac": "02:00:00:00:01:07",
+    "maxdownloadspeed": "26180044",
+    "upload": "3843428559",
+    "upspeed": "24",
+    "ip": "10.9.8.106",
+    "downspeed": "162",
+    "online": "44294",
+    "dev": "eth1.3",
+    "maxuploadspeed": "1660359",
+    "download": "7681375801"
+   },
+   "ctype": 0,
+   "online": 1
+  },
+  {
+   "isap": 0,
+   "parent": "",
+   "ip": "10.9.8.107",
+   "port": 2,
+   "hostname": "",
+   "mac": "02:00:00:00:01:08",
+   "origin_name": "",
+   "ptype": 0,
+   "authority": {
+    "wan": 1,
+    "pridisk": 0,
+    "admin": 1,
+    "lan": 1
+   },
+   "company": {
+    "priority": 2,
+    "type": {
+     "p": 0,
+     "c": 0,
+     "n": ""
+    },
+    "name": "",
+    "icon": ""
+   },
+   "push": 0,
+   "name": "02:00:00:00:01:08",
+   "times": 0,
+   "type": "wifi",
+   "statistics": {
+    "mac": "02:00:00:00:01:08",
+    "maxdownloadspeed": "10651161",
+    "upload": "112863057",
+    "upspeed": "79",
+    "ip": "10.9.8.107",
+    "downspeed": "24",
+    "online": "326927",
+    "dev": "wl0",
+    "maxuploadspeed": "63774",
+    "download": "191897901"
+   },
+   "ctype": 0,
+   "online": 1
+  },
+  {
+   "isap": 0,
+   "parent": "02:00:00:00:00:A1",
+   "ip": "10.9.8.108",
+   "port": 2,
+   "hostname": "",
+   "mac": "02:00:00:00:01:09",
+   "origin_name": "",
+   "ptype": 0,
+   "authority": {
+    "wan": 1,
+    "pridisk": 0,
+    "admin": 1,
+    "lan": 1
+   },
+   "company": {
+    "priority": 2,
+    "type": {
+     "p": 0,
+     "c": 0,
+     "n": ""
+    },
+    "name": "",
+    "icon": ""
+   },
+   "push": 0,
+   "name": "02:00:00:00:01:09",
+   "times": 0,
+   "type": "ap",
+   "statistics": {
+    "mac": "02:00:00:00:01:09",
+    "maxdownloadspeed": "0",
+    "upload": "66448",
+    "upspeed": "0",
+    "ip": "10.9.8.108",
+    "downspeed": "0",
+    "online": "6799",
+    "dev": "wl0",
+    "maxuploadspeed": "485",
+    "download": "0"
+   },
+   "ctype": 0,
+   "online": 1
+  },
+  {
+   "isap": 0,
+   "parent": "",
+   "ip": "10.9.8.109",
+   "port": 2,
+   "hostname": "",
+   "mac": "02:00:00:00:01:0A",
+   "origin_name": "",
+   "ptype": 0,
+   "authority": {
+    "wan": 1,
+    "pridisk": 0,
+    "admin": 1,
+    "lan": 1
+   },
+   "company": {
+    "priority": 2,
+    "type": {
+     "p": 0,
+     "c": 0,
+     "n": ""
+    },
+    "name": "",
+    "icon": ""
+   },
+   "push": 0,
+   "name": "02:00:00:00:01:0A",
+   "times": 0,
+   "type": "wifi",
+   "statistics": {
+    "mac": "02:00:00:00:01:0A",
+    "maxdownloadspeed": "2389812",
+    "upload": "10750007",
+    "upspeed": "0",
+    "ip": "10.9.8.109",
+    "downspeed": "0",
+    "online": "332203",
+    "dev": "wl0",
+    "maxuploadspeed": "106377",
+    "download": "128639766"
+   },
+   "ctype": 0,
+   "online": 1
+  },
+  {
+   "isap": 0,
+   "parent": "02:00:00:00:00:A1",
+   "ip": "10.9.8.110",
+   "port": 2,
+   "hostname": "",
+   "mac": "02:00:00:00:01:0B",
+   "origin_name": "",
+   "ptype": 0,
+   "authority": {
+    "wan": 1,
+    "pridisk": 0,
+    "admin": 1,
+    "lan": 1
+   },
+   "company": {
+    "priority": 2,
+    "type": {
+     "p": 0,
+     "c": 0,
+     "n": ""
+    },
+    "name": "",
+    "icon": ""
+   },
+   "push": 0,
+   "name": "02:00:00:00:01:0B",
+   "times": 0,
+   "type": "ap",
+   "statistics": {
+    "mac": "02:00:00:00:01:0B",
+    "maxdownloadspeed": "0",
+    "upload": "72674",
+    "upspeed": "0",
+    "ip": "10.9.8.110",
+    "downspeed": "0",
+    "online": "6799",
+    "dev": "wl0",
+    "maxuploadspeed": "819",
+    "download": "0"
+   },
+   "ctype": 0,
+   "online": 1
+  },
+  {
+   "isap": 0,
+   "parent": "",
+   "ip": "10.9.8.111",
+   "port": 2,
+   "hostname": "",
+   "mac": "02:00:00:00:01:0C",
+   "origin_name": "",
+   "ptype": 0,
+   "authority": {
+    "wan": 1,
+    "pridisk": 0,
+    "admin": 1,
+    "lan": 1
+   },
+   "company": {
+    "priority": 2,
+    "type": {
+     "p": 0,
+     "c": 0,
+     "n": ""
+    },
+    "name": "",
+    "icon": ""
+   },
+   "push": 0,
+   "name": "02:00:00:00:01:0C",
+   "times": 0,
+   "type": "wifi",
+   "statistics": {
+    "mac": "02:00:00:00:01:0C",
+    "maxdownloadspeed": "1737542",
+    "upload": "1064514",
+    "upspeed": "10",
+    "ip": "10.9.8.111",
+    "downspeed": "13",
+    "online": "5191",
+    "dev": "wl0",
+    "maxuploadspeed": "88026",
+    "download": "11546253"
+   },
+   "ctype": 0,
+   "online": 1
+  },
+  {
+   "isap": 0,
+   "parent": "02:00:00:00:00:A1",
+   "ip": "10.9.8.112",
+   "port": 2,
+   "hostname": "",
+   "mac": "02:00:00:00:01:0D",
+   "origin_name": "device-2",
+   "ptype": 0,
+   "authority": {
+    "wan": 1,
+    "pridisk": 0,
+    "admin": 1,
+    "lan": 1
+   },
+   "company": {
+    "priority": 2,
+    "type": {
+     "p": 0,
+     "c": 0,
+     "n": ""
+    },
+    "name": "",
+    "icon": ""
+   },
+   "push": 0,
+   "name": "device-2",
+   "times": 0,
+   "type": "ap",
+   "statistics": {
+    "mac": "02:00:00:00:01:0D",
+    "maxdownloadspeed": "0",
+    "upload": "71720",
+    "upspeed": "0",
+    "ip": "10.9.8.112",
+    "downspeed": "0",
+    "online": "2717",
+    "dev": "wl0",
+    "maxuploadspeed": "367",
+    "download": "0"
+   },
+   "ctype": 0,
+   "online": 1
+  },
+  {
+   "isap": 0,
+   "parent": "",
+   "ip": "10.9.8.113",
+   "port": 1,
+   "hostname": "",
+   "mac": "02:00:00:00:01:0E",
+   "origin_name": "",
+   "ptype": 0,
+   "authority": {
+    "wan": 1,
+    "pridisk": 0,
+    "admin": 1,
+    "lan": 1
+   },
+   "company": {
+    "priority": 2,
+    "type": {
+     "p": 0,
+     "c": 0,
+     "n": ""
+    },
+    "name": "",
+    "icon": ""
+   },
+   "push": 0,
+   "name": "02:00:00:00:01:0E",
+   "times": 0,
+   "type": "wifi",
+   "statistics": {
+    "mac": "02:00:00:00:01:0E",
+    "maxdownloadspeed": "462",
+    "upload": "888194",
+    "upspeed": "0",
+    "ip": "10.9.8.113",
+    "downspeed": "0",
+    "online": "324868",
+    "dev": "wl1",
+    "maxuploadspeed": "444",
+    "download": "826609"
+   },
+   "ctype": 0,
+   "online": 1
+  },
+  {
+   "isap": 0,
+   "parent": "",
+   "ip": "10.9.8.114",
+   "port": 2,
+   "hostname": "",
+   "mac": "02:00:00:00:01:0F",
+   "origin_name": "",
+   "ptype": 0,
+   "authority": {
+    "wan": 1,
+    "pridisk": 0,
+    "admin": 1,
+    "lan": 1
+   },
+   "company": {
+    "priority": 2,
+    "type": {
+     "p": 0,
+     "c": 0,
+     "n": ""
+    },
+    "name": "",
+    "icon": ""
+   },
+   "push": 0,
+   "name": "02:00:00:00:01:0F",
+   "times": 0,
+   "type": "wifi",
+   "statistics": {
+    "mac": "02:00:00:00:01:0F",
+    "maxdownloadspeed": "657672",
+    "upload": "15664321",
+    "upspeed": "0",
+    "ip": "10.9.8.114",
+    "downspeed": "0",
+    "online": "64829",
+    "dev": "wl0",
+    "maxuploadspeed": "37839",
+    "download": "50328227"
+   },
+   "ctype": 0,
+   "online": 1
+  },
+  {
+   "isap": 0,
+   "parent": "",
+   "ip": "10.9.8.115",
+   "port": 2,
+   "hostname": "",
+   "mac": "02:00:00:00:01:10",
+   "origin_name": "",
+   "ptype": 0,
+   "authority": {
+    "wan": 1,
+    "pridisk": 0,
+    "admin": 1,
+    "lan": 1
+   },
+   "company": {
+    "priority": 2,
+    "type": {
+     "p": 0,
+     "c": 0,
+     "n": ""
+    },
+    "name": "",
+    "icon": ""
+   },
+   "push": 0,
+   "name": "02:00:00:00:01:10",
+   "times": 0,
+   "type": "wifi",
+   "statistics": {
+    "mac": "02:00:00:00:01:10",
+    "maxdownloadspeed": "39799948",
+    "upload": "111909117627",
+    "upspeed": "125497",
+    "ip": "10.9.8.115",
+    "downspeed": "28837",
+    "online": "334006",
+    "dev": "wl0",
+    "maxuploadspeed": "7307753",
+    "download": "126591260986"
+   },
+   "ctype": 0,
+   "online": 1
+  }
+ ],
+ "code": 0
+}

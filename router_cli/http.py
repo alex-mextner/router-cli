@@ -209,6 +209,19 @@ class _RedirectHandler(urllib.request.HTTPRedirectHandler):
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
+class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(
+        self,
+        req: urllib.request.Request,
+        fp: Any,
+        code: int,
+        msg: str,
+        headers: Any,
+        newurl: str,
+    ) -> urllib.request.Request | None:
+        return None
+
+
 def is_lan_host(host: str | None) -> bool:
     """A private, link-local or loopback address (or a ``.local``/``.lan`` name)."""
     text = (host or "").strip("[]").lower()
@@ -249,6 +262,9 @@ class HttpTransport:
     allow_writes: bool = False
     user_agent: str = "router-cli"
     sent: list[HttpRequest] = field(default_factory=list)
+    # A Host header other than the URL's: a Xiaomi node reached over IPv6 link-local
+    # (``https://[fe80::1%eth0]``) only answers for ``localhost``.
+    host_header: str | None = None
 
     def get(self, path: str) -> str:
         check_path(path)
@@ -270,9 +286,15 @@ class HttpTransport:
         data = request.body() if request.method != "GET" else None
         req = urllib.request.Request(url, data=data, method=request.method)
         req.add_header("User-Agent", self.user_agent)
+        if self.host_header:
+            req.add_header("Host", self.host_header)
         if data is not None:
             req.add_header("Content-Type", request.content_type)
-        handlers: list[urllib.request.BaseHandler] = [_RedirectHandler()]
+        # With a forced Host header a redirect would name that host (``https://localhost/``):
+        # never followed, it surfaces as an HTTP error instead.
+        handlers: list[urllib.request.BaseHandler] = [
+            _NoRedirectHandler() if self.host_header else _RedirectHandler()
+        ]
         ctx = lan_tls_context(url)
         if ctx is not None:
             handlers.append(urllib.request.HTTPSHandler(context=ctx))

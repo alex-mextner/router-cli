@@ -1,0 +1,18 @@
+{
+ "dev": [],
+ "code": 0,
+ "count": {
+  "online": 0,
+  "all": 0
+ },
+ "hardware": {
+  "mac": "02:00:00:00:00:A1",
+  "platform": "RD28",
+  "version": "1.0.148",
+  "channel": "release",
+  "ispName": "",
+  "DisplayRomVer": "1.0.148",
+  "displayName": "Xiaomi Mesh System AX3000 NE"
+ },
+ "upTime": "69116.00"
+}

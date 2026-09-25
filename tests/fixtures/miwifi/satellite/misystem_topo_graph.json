@@ -1,0 +1,14 @@
+{
+ "show": 0,
+ "graph": {
+  "locale": "Study",
+  "ssid": "synth",
+  "name": "device-5",
+  "channel": "release",
+  "hardware": "RD28",
+  "mode": 3,
+  "color": 101,
+  "ip": "10.9.8.3"
+ },
+ "code": 0
+}
