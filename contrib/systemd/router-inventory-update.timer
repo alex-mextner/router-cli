@@ -1,0 +1,13 @@
+[Unit]
+Description=Poll the router into the device inventory once an hour
+# Some gateways (the Ubee EVW32C) hang when polled often: the router is polled ONLY by this
+# timer and on demand. Frequent data comes from router-discover.timer, which never polls it.
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=1h
+RandomizedDelaySec=2min
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

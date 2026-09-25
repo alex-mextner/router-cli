@@ -132,6 +132,8 @@ class BaseDriver:
     lists: ClassVar[dict[str, str]] = {}
     notes: ClassVar[list[str]] = []
     reservation_names: ClassVar[bool] = False  # can a static lease carry a name?
+    # An access point / mesh node, not the gateway: `router login` does not make it the default.
+    access_point: ClassVar[bool] = False
 
     def __init__(self, transport: Transport, credentials: CredentialSource | None = None) -> None:
         self.transport = transport

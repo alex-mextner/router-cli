@@ -1,0 +1,10 @@
+[Unit]
+Description=Probe web UIs and fingerprint ports of online LAN devices (router-cli scan; skips the gateway)
+ConditionPathExists=%h/.local/bin/router
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/router scan --all-online --json
+StandardOutput=null
+TimeoutStartSec=25min
+Nice=15

@@ -15,7 +15,7 @@ from datetime import UTC, datetime
 from .. import device_selector
 from .._errors import UsageError
 from ..inventory import Inventory
-from ..scan import DEFAULT_PORTS, scan_hosts
+from ..scan import DEFAULT_PORTS, fingerprint_only_ports, scan_hosts
 from . import _common as C
 
 NAME = "scan"
@@ -47,6 +47,16 @@ def run(argv: list[str]) -> int:
     p.add_argument("--http-timeout", type=float, default=3.0)
     p.add_argument("--no-favicon", action="store_true")
     p.add_argument("--no-save", action="store_true", help="do not store results in the inventory")
+    p.add_argument(
+        "--no-fingerprint",
+        action="store_true",
+        help="skip the connect-only probe of the classifier's ports (ESPHome, iOS, Tuya, ...)",
+    )
+    p.add_argument(
+        "--force",
+        action="store_true",
+        help="allow --ip to name the gateway (whose web server may hang when probed)",
+    )
     C.add_router_args(p)
     args = p.parse_args(argv)
 
@@ -56,15 +66,31 @@ def run(argv: list[str]) -> int:
                 from .inventory import update
 
                 update(C.open_driver(args))
-            targets: list[tuple[str, str | None]] = [(ip, mac) for mac, ip in inv.online_targets()]
+            now_t = int(datetime.now(UTC).timestamp())
+            shared = {c["ip"] for c in inv.ip_conflicts(now_t - 6 * 3600, now_t + 60)}
+            targets: list[tuple[str, str | None]] = [
+                (ip, mac) for mac, ip in inv.online_targets() if ip not in shared
+            ]
         else:
             targets = [device_selector.resolve_target(sel, inv) for sel in args.ip]
+            protected = inv.protected_ips()
+            refused = [ip for ip, _mac in targets if ip in protected]
+            if refused and not args.force:
+                raise UsageError(
+                    what=f"refusing to scan {', '.join(refused)}",
+                    why="that is the gateway (or one of its interfaces); its web server can "
+                    "hang when probed",
+                    how="pass --force if you really mean it",
+                )
+        known = {ip: inv.known_services(mac) for ip, mac in targets if mac and not args.ports}
         results = scan_hosts(
             targets,
             ports=_ports(args.ports),
             connect_timeout=args.connect_timeout,
             http_timeout=args.http_timeout,
             with_icons=not args.no_favicon,
+            extra_ports=() if args.no_fingerprint or args.ports else fingerprint_only_ports(),
+            known=known,
         )
         at = datetime.now(UTC).replace(microsecond=0).isoformat()
         if not args.no_save:

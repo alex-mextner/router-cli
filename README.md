@@ -151,52 +151,141 @@ the fastest way to add support for a setting this tool does not name yet.
 
 ## Inventory and discovery
 
-A router only knows who is connected *now*. `router inventory update` merges each poll into a
-local SQLite database (`~/.local/share/router-cli/inventory.sqlite3`, or `$ROUTER_CLI_DB`)
-that remembers every MAC: first and last seen, every IP and name it has had, its static
-lease, the manufacturer (from the IEEE OUI registry, shipped and refreshable with
-`router oui update`), whether the MAC is randomised, and the web UIs `router scan` found on
-it.
+A router only knows who is connected *now*. router-cli keeps a local SQLite database
+(`~/.local/share/router-cli/inventory.sqlite3`, or `$ROUTER_CLI_DB`) that remembers every MAC:
+first and last seen, every IP and name it has had, its static lease, the manufacturer (IEEE OUI
+registry, shipped, `router oui update` refreshes it), whether the MAC is randomised, the web
+UIs `router scan` found on it, what it announces about itself on the LAN, how it is connected,
+a presence sample every few minutes and its traffic counters.
+
+Two things fill it:
+
+- **`router inventory update`** polls the router (its client table and static leases). Some
+  gateways — the Ubee EVW32C — hang when polled often: run this hourly, not every minute.
+- **`router discover`** sweeps the LAN *from this machine* and never talks to the router's web
+  server: an ICMP echo sweep with reply TTLs plus the kernel ARP table (presence), mDNS/DNS-SD
+  (multicast and direct unicast questions, reverse lookups), SSDP + UPnP descriptions, NetBIOS
+  names, the public `init_info` of Xiaomi routers, Moonraker's `/printer/info`, a health check
+  of every known web service, and — with credentials — the Xiaomi mesh client list (node,
+  band, signal, traffic). Home Assistant's device registry (`--ha-config` /
+  `ROUTER_CLI_HA_CONFIG`, read-only) adds what you already told HA. About 10 s; meant for a
+  5-minute timer. Once it runs, sweeps (not router polls) decide who is online, and the
+  machine running it is always online.
 
 ```bash
-router inventory update [--resolve]      # poll; --resolve adds reverse-DNS/mDNS names
-                                         # (concurrent updates wait and share one poll)
+router discover [--json] [--ha-config ~/homeassistant]    # the 5-minute sweep
+router inventory update [--resolve]      # poll the router (hourly)
 router inventory list --json [--filter recent|active|all|reserved|new] [--since 24h]
-router scan --all-online --json          # probe popular web ports on every online device
+                         [--no-favicons] [--all-interfaces]
+router inventory history <device> --json [--days 7] [--bucket 1h]
+router inventory stats --json [--days 7]
+router scan --all-online --json          # web UIs + fingerprint ports of every online device
 router scan --ip 192.168.0.50            # or --ip <mac or name>
 router alias 02:00:00:00:00:05 --name "3D printer" --icon mdi:printer-3d
 ```
 
-`inventory list --json` is a stable contract (Home Assistant dashboards read it):
+The gateway (and any interface of it, recognised by its neighbouring MAC) only ever gets ARP
+and ping from `discover`; `scan --all-online` skips it and `scan --ip <gateway>` needs
+`--force`. An address two devices answer for (an IP conflict) is detected from the sweeps, left
+unattributed, and reported by `stats`.
+
+### What each device is
+
+Every device is classified by [netprint](https://github.com/alex-mextner/netprint) (vendored in
+`router_cli/_vendor/netprint`, refreshed with `scripts/vendor-netprint.sh`): ~480 data-driven
+rules over the OUI vendor, randomised MACs, host names, mDNS services and TXT records (Apple
+model ids, ESPHome, Cast, Yandex, Moonraker, HomeKit...), UPnP descriptions, web titles and
+page markers, open ports (a connect-only probe of the ports the rules know: 62078 iOS, 6053
+ESPHome, 6668 Tuya, 1961 Yandex, 7125 Moonraker, ...), TTL, NetBIOS and the Home Assistant
+registry. Each device gets a `category`, an `icon`, a `confidence`, the `evidence` behind it
+and a `display_name`. `router alias --name/--icon` beats everything; rules in
+`~/.config/router-cli/icon_rules.json` (legacy shape) beat the classifier's icon.
+
+One physical device with several MACs (this machine's Ethernet + Wi-Fi, a TV's two NICs, the
+gateway's second interface) is listed once, with every MAC in `interfaces`.
+
+### Wi-Fi topology and traffic (Xiaomi mesh)
+
+A Xiaomi / Redmi mesh in access-point mode knows every Wi-Fi client — node, band, signal — and
+per-client traffic counters; the gateway sees bridged Wi-Fi clients as "LAN" and has no
+per-client counters. With the mesh's admin password stored, `discover` reads it every run:
+
+```bash
+router login --driver miwifi --host 192.168.31.1 --no-default   # the main mesh node
+```
+
+(An access point never becomes the default router.) Without it, `connection` is a heuristic
+(`source: "heuristic"`: randomised MAC or phone/IoT category → Wi-Fi, motherboard NIC → wired,
+else unknown) and `traffic` is `null`.
+
+### The JSON contract
+
+`inventory list --json` is a stable contract (Home Assistant dashboards read it); keys are only
+ever added:
 
 ```json
 {
   "generated_at": "2026-01-01T12:00:00+00:00",
   "last_poll": "2026-01-01T11:00:00+00:00",
+  "last_discover": "2026-01-01T11:58:00+00:00",
   "router": {"driver": "ubee_evw32c", "model": "EVW32C-0N", "host": "192.168.0.1"},
   "devices": [{
     "mac": "02:00:00:00:00:05", "ip": "192.168.0.50", "hostname": "3D printer",
-    "names": ["3D printer"], "vendor": "Raspberry Pi Trading", "random_mac": false, "interface": "lan",
+    "names": ["3D printer"], "vendor": "AMPAK", "random_mac": false, "interface": "lan",
     "online": true, "first_seen": "...", "last_seen": "...", "reserved_ip": "192.168.0.50",
     "ip_history": [{"ip": "192.168.0.50", "first_seen": "...", "last_seen": "..."}],
-    "icon": "mdi:printer-3d",
+    "icon": "mdi:printer-3d-nozzle",
     "services": [{"port": 7125, "scheme": "http", "url": "http://192.168.0.50:7125/",
                   "title": "Moonraker", "server": "TornadoServer/6.2",
-                  "favicon_data_url": null, "checked_at": "..."}]
+                  "favicon_data_url": null, "checked_at": "...",
+                  "reachable": true, "http_status": 200, "error": null}],
+    "category": "3d-printer", "confidence": 0.99, "label": "Klipper printer (Moonraker)",
+    "evidence": [{"source": "ports", "detail": "port 7125 (Moonraker)", "weight": 0.9}],
+    "alternatives": [{"category": "raspberry-pi", "confidence": 0.2}],
+    "display_name": "3D printer", "pinnable": true, "is_network_gear": false, "is_self": false,
+    "connection": {"type": "wifi", "via": "02:00:00:00:00:a1", "via_name": "hall node",
+                   "band": "5", "rssi": -58, "source": "miwifi"},
+    "traffic": {"rx_bytes": 123456, "tx_bytes": 7890, "rx_rate": 1200, "tx_rate": 300,
+                "updated_at": "...", "source": "miwifi"},
+    "interfaces": [{"mac": "02:00:00:00:00:05", "ip": "192.168.0.50", "online": true,
+                    "name": null, "type": "wifi"}],
+    "same_device_as": null
   }]
 }
 ```
 
-`icon` is a Material Design Icon chosen by a data-driven rule table
-(`router_cli/data/icon_rules.json`): open services and page titles first (8123 → Home
-Assistant, 7125/Moonraker/fluidd → 3D printer, 32400 → Plex, 631 → printer, ESPHome →
-chip), then host name patterns, then the manufacturer, and finally "randomised MAC → phone".
-Add or override rules in `~/.config/router-cli/icon_rules.json` (same shape, tried first);
-`router alias <mac> --icon` beats every rule.
+- `pinnable` is false for randomised MACs (a reservation would not survive the next rotation).
+- `services[].reachable/http_status/error` come from the last scan or the 5-minute health
+  check: `error` is `refused`, `timeout`, `tls`, `reset`, `unreachable` or `http`; a service
+  that stops answering stays listed with `reachable: false`.
+- `connection.type` is `wired`, `wifi` or `unknown`; `band` is `"2.4"`, `"5"`, `"6"` or null.
 
-`scan` only ever sends a GET for `/` and for the favicon to each open port (HTTPS first on the
-usual TLS ports, certificates not verified — LAN devices are self-signed). Favicons are
-stored as `data:` URLs capped at 32 KiB.
+`inventory history <device> --json` → `{"mac", "days", "bucket_s", "buckets": [{"t",
+"online_ratio", "samples", "rx_bytes", "tx_bytes"}]}`: the share of sweeps in each bucket that
+saw the device (`null` when no sweep ran) and the bytes counted in it (`null` without traffic
+data).
+
+`inventory stats --json` → `{"online_now", "online_avg", "per_hour": [{"t", "online",
+"samples"}], "top_traffic": [{"mac", "display_name", "rx_bytes", "tx_bytes"}], "network_gear":
+[{"mac", "ip", "display_name", "category", "role", "online"}], "unexpected_network_gear",
+"ip_conflicts": [{"ip", "macs", "flips", "source"}], "sweeps", "since"}`. `role` is `gateway`,
+`mesh-node` or `other`: a non-zero `unexpected_network_gear` means someone plugged in another
+router or access point.
+
+`scan` only ever sends a GET for `/` and for the favicon to each open web port (HTTPS first on
+the usual TLS ports, certificates not verified — LAN devices are self-signed); fingerprint
+ports are connect-only. Favicons are stored as `data:` URLs capped at 32 KiB.
+
+### Timers
+
+`contrib/systemd/` has user units: `router-discover.timer` (every 5 min),
+`router-inventory-update.timer` (hourly router poll) and `router-scan.timer` (every 6 h):
+
+```bash
+cp contrib/systemd/router-* ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now router-discover.timer router-inventory-update.timer router-scan.timer
+```
 
 ## Credentials
 
@@ -231,6 +320,7 @@ OpenWrt a JSON-RPC one.
 | --- | --- | --- |
 | Ubee EVW32C-0N / EVW32C-0S (cable gateway, Broadcom firmware) | `ubee_evw32c` (alias `ubee`) | every page mapped; reads verified live; writes built from live forms, verified against captures |
 | OpenWrt with LuCI (rpcd `/ubus` JSON-RPC) | `openwrt` | status, devices, leases, reservations, port forwards, uci areas; verified against fixtures only |
+| Xiaomi / Redmi routers and mesh systems (LuCI JSON API; access-point mode too) | `miwifi` (alias `xiaomi`) | read-only: Wi-Fi clients, mesh node, band, signal, per-client traffic; login verified by fixtures only |
 
 `router drivers` prints the full capability matrix; `router detect` identifies a host without
 logging in.

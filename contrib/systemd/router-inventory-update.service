@@ -1,0 +1,9 @@
+[Unit]
+Description=Poll the router into the device inventory (router-cli inventory update)
+ConditionPathExists=%h/.local/bin/router
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/router inventory update --wait 40
+TimeoutStartSec=50
+Nice=10

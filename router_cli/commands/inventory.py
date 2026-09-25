@@ -2,6 +2,9 @@
 
     router inventory update [--resolve] [--wait 120]
     router inventory list --json [--filter recent|active|all|reserved|new] [--since 24h]
+                               [--no-favicons] [--all-interfaces]
+    router inventory history DEVICE --json [--days 7] [--bucket 1h]
+    router inventory stats --json [--days 7]
 
 ``update`` reads devices and static leases from the router (GET-only), merges them into
 the SQLite inventory, and (with ``--resolve``) looks up reverse-DNS/mDNS names for
@@ -21,7 +24,8 @@ from contextlib import contextmanager
 from datetime import UTC, datetime
 from typing import Any
 
-from .._errors import RouterCliError
+from .. import device_selector
+from .._errors import RouterCliError, UsageError
 from ..config import db_path
 from ..drivers.base import BaseDriver, Capability
 from ..inventory import FILTERS, Inventory, now_iso, parse_since
@@ -127,8 +131,70 @@ def poll_lock(wait: float = 120.0) -> Iterator[bool]:
             fcntl.flock(handle, fcntl.LOCK_UN)
 
 
+def _bucket_seconds(text: str) -> int:
+    seconds = int(parse_since(text).total_seconds())
+    if not 300 <= seconds <= 86400:
+        raise UsageError(what=f"--bucket {text!r}", why="must be between 5m and 1d", how="")
+    return seconds
+
+
+def _days(value: float) -> float:
+    if not 0 < value <= 120:
+        raise UsageError(what=f"--days {value:g}", why="must be in (0, 120]", how="")
+    return value
+
+
+def _history(args: Any) -> int:
+    bucket = _bucket_seconds(args.bucket)
+    days = _days(args.days)
+    if days * 86400 / bucket > 5000:
+        raise UsageError(
+            what="too many buckets",
+            why=f"{days:g} days of {args.bucket}",
+            how="use a bigger --bucket",
+        )
+    with Inventory() as inv:
+        mac = device_selector.resolve_mac(args.device, inv)
+        data = inv.history(mac, days=days, bucket_s=bucket)
+    if args.json:
+        C.emit_json(data)
+        return 0
+    rows = [
+        [
+            b["t"],
+            "-" if b["online_ratio"] is None else f"{b['online_ratio'] * 100:.0f}%",
+            b["samples"],
+            b["rx_bytes"],
+            b["tx_bytes"],
+        ]
+        for b in data["buckets"]
+        if b["samples"] or b["rx_bytes"] is not None
+    ]
+    print(C.table(["from", "online", "samples", "rx bytes", "tx bytes"], rows))
+    return 0
+
+
+def _stats(args: Any) -> int:
+    with Inventory() as inv:
+        data = inv.stats(days=_days(args.days))
+    if args.json:
+        C.emit_json(data)
+        return 0
+    print(
+        f"online now: {data['online_now']}; average: {data['online_avg']} ({data['sweeps']} sweeps)"
+    )
+    for gear in data["network_gear"]:
+        name, ip, kind, role = gear["display_name"], gear["ip"], gear["category"], gear["role"]
+        print(f"network gear: {name} ({ip}) {kind} [{role}]")
+    for conflict in data["ip_conflicts"]:
+        print(f"IP conflict: {conflict['ip']} flips between {', '.join(conflict['macs'])}")
+    for t in data["top_traffic"]:
+        print(f"traffic: {t['display_name']}: rx {t['rx_bytes']} tx {t['tx_bytes']}")
+    return 0
+
+
 def run(argv: list[str]) -> int:
-    if not argv or argv[0] not in ("update", "list", "-h", "--help"):
+    if not argv or argv[0] not in ("update", "list", "history", "stats", "-h", "--help"):
         argv = ["list", *argv]
     top = C.parser(NAME, SUMMARY)
     sub = top.add_subparsers(dest="verb")
@@ -149,9 +215,31 @@ def run(argv: list[str]) -> int:
     p = sub.add_parser("list", help="print the inventory")
     p.add_argument("--filter", choices=FILTERS, default="all")
     p.add_argument("--since", default="24h", help="window for recent/new (e.g. 30m, 24h, 7d)")
+    p.add_argument(
+        "--no-favicons",
+        action="store_true",
+        help="leave favicon_data_url null (a much smaller answer)",
+    )
+    p.add_argument(
+        "--all-interfaces",
+        action="store_true",
+        help="also list the secondary MACs of multi-interface devices (same_device_as set)",
+    )
+    p.add_argument("--json", action="store_true")
+    p = sub.add_parser("history", help="online share and traffic of one device over time")
+    p.add_argument("device", metavar="DEVICE", help="MAC, current IP or name")
+    p.add_argument("--days", type=float, default=7.0)
+    p.add_argument("--bucket", default="1h", help="bucket size, 5m..1d (default 1h)")
+    p.add_argument("--json", action="store_true")
+    p = sub.add_parser("stats", help="network-wide presence, traffic and network gear")
+    p.add_argument("--days", type=float, default=7.0)
     p.add_argument("--json", action="store_true")
     args = top.parse_args(argv)
 
+    if args.verb == "history":
+        return _history(args)
+    if args.verb == "stats":
+        return _stats(args)
     if args.verb == "update":
         with poll_lock(args.wait) as first:
             if first:
@@ -172,14 +260,21 @@ def run(argv: list[str]) -> int:
         return 0
 
     with Inventory() as inv:
-        devices = inv.devices(args.filter, parse_since(args.since))
+        devices = inv.devices(
+            args.filter,
+            parse_since(args.since),
+            favicons=not args.no_favicons,
+            group=not args.all_interfaces,
+        )
         router = inv.router()
         last_poll = inv.meta("last_poll")
+        last_discover = inv.meta("last_discover")
     if args.json:
         C.emit_json(
             {
                 "generated_at": datetime.now(UTC).replace(microsecond=0).isoformat(),
                 "last_poll": last_poll,
+                "last_discover": last_discover,
                 "router": router,
                 "devices": devices,
             }
@@ -189,15 +284,33 @@ def run(argv: list[str]) -> int:
         [
             d["mac"],
             d["ip"],
-            d["hostname"],
+            d["display_name"],
+            d["category"],
+            f"{d['confidence']:.2f}",
             d["vendor"] or ("(random)" if d["random_mac"] else ""),
             "yes" if d["online"] else "no",
+            d["connection"]["type"],
             d["reserved_ip"],
-            d["icon"].replace("mdi:", ""),
             ",".join(str(s["port"]) for s in d["services"]),
         ]
         for d in devices
     ]
-    print(C.table(["mac", "ip", "hostname", "vendor", "online", "reserved", "icon", "web"], rows))
+    print(
+        C.table(
+            [
+                "mac",
+                "ip",
+                "name",
+                "category",
+                "conf",
+                "vendor",
+                "online",
+                "link",
+                "reserved",
+                "web",
+            ],
+            rows,
+        )
+    )
     print(f"\n{len(devices)} device(s) [{args.filter}]")
     return 0

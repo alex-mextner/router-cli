@@ -1,0 +1,10 @@
+[Unit]
+Description=Scan web UIs of online LAN devices every 6 hours (devices only, never the gateway)
+
+[Timer]
+OnBootSec=15min
+OnUnitActiveSec=6h
+RandomizedDelaySec=5min
+
+[Install]
+WantedBy=timers.target

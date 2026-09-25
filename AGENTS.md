@@ -28,11 +28,17 @@ fully typed (mypy strict), zero third-party runtime dependencies.
 | `drivers/ubee_evw32c.py` | the Ubee driver: session handling, parsers, write plans |
 | `drivers/ubee_areas.py` | the Ubee web UI as data: pages, forms, field maps, apply flags, list pages, Wi-Fi/WPS JSON |
 | `drivers/openwrt.py` | OpenWrt via rpcd `/ubus` JSON-RPC (session, luci-rpc, iwinfo, uci) |
+| `drivers/miwifi.py` | Xiaomi / Redmi routers and mesh nodes (LuCI JSON API): Wi-Fi clients, node, band, signal, traffic; read-only |
 | `drivers/__init__.py` | driver registry, aliases, GET-only `detect` |
 | `models.py` | normalized dataclasses + MAC/IP helpers |
 | `credentials.py` | `credentials.json` (0600/0700, keyed by host, `default`), optional OS keyrings |
-| `inventory.py` | SQLite inventory, poll merging, the HA JSON contract |
-| `scan.py` | concurrent port probe + HTTP title/server/favicon |
+| `inventory.py` | SQLite inventory: router polls and LAN sweeps merged, presence/traffic samples, history, stats, multi-MAC grouping, the HA JSON contract |
+| `fingerprint.py` | inventory data -> netprint `Signals`; `connection` (wired/Wi-Fi, node, band, signal) |
+| `_vendor/netprint/` | the device classifier (engine + JSON rules), vendored from github.com/alex-mextner/netprint by `scripts/vendor-netprint.sh` — change it upstream |
+| `lan/` | LAN discovery without the router: `netinfo` (interfaces), `sweep` (ICMP + ARP table), `mdns`, `ssdp`, `netbios` |
+| `ha_registry.py` | read-only Home Assistant device registry facts (by MAC, host, companion-app name) |
+| `commands/discover.py` | `router discover`: one sweep of the LAN into the inventory (the 5-minute timer) |
+| `scan.py` | concurrent port probe (web + connect-only fingerprint ports) + HTTP title/server/favicon/markers, service health |
 | `icons.py` + `data/icon_rules.json` | MDI icon rule engine |
 | `oui.py` + `data/oui.tsv.gz` | IEEE MA-L vendor table (shipped; `router oui update` refreshes) |
 | `install.py` | agent-skill registration (`router install-skill`) |
@@ -64,6 +70,13 @@ fully typed (mypy strict), zero third-party runtime dependencies.
 - **Secrets never reach output unredacted.** Password-type fields, PSKs, RADIUS secrets, WPS
   PINs and ubus session ids are masked in `render_requests`, `to_dict`, `raw get/form` and
   every `show` unless `--show-secrets`. Credentials never go through argv or env.
+- **The gateway is never probed by discovery.** `router discover` sends the default gateway
+  (and every interface of it, recognised by a neighbouring MAC) ARP and ICMP only — no HTTP,
+  no SSDP description fetch, no mDNS/NetBIOS unicast. `Inventory.protected_ips()` lists those
+  addresses; `scan --all-online` skips them and `scan --ip` refuses them without `--force`.
+  Some gateways (the Ubee) hang when their web server is polled often.
+- **Sweeps decide who is online.** Once `discover` runs, a router poll no longer changes
+  anyone's `online` flag; the machine router-cli runs on is always online.
 - **The inventory JSON contract is stable.** Keys of `inventory list --json` (see
   `inventory.py` docstring) are consumed by a Home Assistant dashboard. Add fields only after
   agreeing with its consumer; never rename or drop one.
@@ -89,7 +102,11 @@ way (including per-octet IP inputs, which the guard cannot see).
   apply flags.
 - **A router family**: subclass `BaseDriver` in `drivers/`, declare `capabilities`, implement
   a GET-only `probe`, register in `drivers/__init__.py`, add synthetic fixtures and tests.
-- **An icon rule**: `data/icon_rules.json` (first match wins).
+- **A device-classification rule** (category, confidence, model): upstream in netprint
+  (`netprint/data/rules/*.json` plus a synthetic fixture), then `scripts/vendor-netprint.sh
+  ../netprint` here. Never edit `router_cli/_vendor/` by hand.
+- **An icon rule**: `data/icon_rules.json` (first match wins). Only a fallback now: the classifier's icon wins unless the category is unknown;
+  a user `icon_rules.json` still beats the classifier.
 
 ## Checks
 

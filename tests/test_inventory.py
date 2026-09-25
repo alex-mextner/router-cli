@@ -29,7 +29,34 @@ CONTRACT_KEYS = {
     "icon",
     "services",
 }
-SERVICE_KEYS = {"port", "scheme", "url", "title", "server", "favicon_data_url", "checked_at"}
+# Added later (the contract only grows): classification, topology, traffic, grouping.
+ADDED_KEYS = {
+    "category",
+    "confidence",
+    "label",
+    "evidence",
+    "alternatives",
+    "display_name",
+    "pinnable",
+    "is_network_gear",
+    "is_self",
+    "connection",
+    "traffic",
+    "interfaces",
+    "same_device_as",
+}
+SERVICE_KEYS = {
+    "port",
+    "scheme",
+    "url",
+    "title",
+    "server",
+    "favicon_data_url",
+    "checked_at",
+    "reachable",
+    "http_status",
+    "error",
+}
 INFO = RouterInfo(driver="ubee_evw32c", host="192.168.0.1", model="EVW32C-0N")
 
 
@@ -56,7 +83,8 @@ def test_polls_merge(inv: Inventory) -> None:
     devices = {d["mac"]: d for d in inv.devices("all")}
     assert set(devices) == {"02:00:00:00:00:01", "02:00:00:00:00:02", "02:00:00:00:00:03"}
     d1 = devices["02:00:00:00:00:01"]
-    assert set(d1) == CONTRACT_KEYS
+    assert set(d1) == CONTRACT_KEYS | ADDED_KEYS
+    assert d1["pinnable"] is False and d1["connection"]["type"] == "wifi"  # random MAC
     assert (
         d1["first_seen"] == "2026-01-01T00:00:00+00:00"
         and d1["last_seen"] == "2026-01-02T00:00:00+00:00"

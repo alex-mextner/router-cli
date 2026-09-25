@@ -106,3 +106,25 @@ def choose(facts: Facts) -> str:
         if matches(rule, facts):
             return str(rule["icon"])
     return default
+
+
+def _user_rules() -> tuple[dict[str, Any], ...]:
+    user_path = config_dir() / "icon_rules.json"
+    if not user_path.is_file():
+        return ()
+    try:
+        user = json.loads(user_path.read_text("utf-8"))
+    except ValueError as exc:
+        raise UsageError(
+            what=f"could not parse {user_path}", why=str(exc), how="fix the JSON"
+        ) from exc
+    return tuple(_validate(user.get("rules", []), str(user_path)))
+
+
+def choose_user(facts: Facts) -> str | None:
+    """The icon of the first matching rule from the USER's icon_rules.json, if any (these beat
+    the device classifier; the shipped rules are only its fallback)."""
+    for rule in _user_rules():
+        if matches(rule, facts):
+            return str(rule["icon"])
+    return None

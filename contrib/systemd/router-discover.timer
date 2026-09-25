@@ -1,0 +1,12 @@
+[Unit]
+Description=Sweep the LAN every 5 minutes: presence history, names, Wi-Fi mesh topology and traffic
+# ARP/ping, mDNS, SSDP, NetBIOS and the Xiaomi mesh API only. The gateway gets ARP/ping and
+# nothing else, so this is safe with routers whose web server hangs when polled.
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target

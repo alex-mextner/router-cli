@@ -20,7 +20,7 @@ from ..drivers.base import BaseDriver, WritePlan, execute
 from ..http import HttpTransport, normalize_base, render_requests
 from ..models import to_json
 
-DEFAULT_USERS = {"ubee_evw32c": "admin", "openwrt": "root"}
+DEFAULT_USERS = {"ubee_evw32c": "admin", "openwrt": "root", "miwifi": "admin"}
 
 
 def parser(prog: str, summary: str, epilog: str | None = None) -> argparse.ArgumentParser:

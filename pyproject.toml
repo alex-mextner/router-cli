@@ -32,7 +32,7 @@ Issues = "https://github.com/alex-mextner/router-cli/issues"
 include = ["router_cli*"]
 
 [tool.setuptools.package-data]
-router_cli = ["data/*"]
+router_cli = ["data/*", "_vendor/netprint/data/*", "_vendor/netprint/data/rules/*", "_vendor/netprint/LICENSE", "_vendor/netprint/VERSION"]
 
 [tool.ruff]
 line-length = 100
@@ -41,6 +41,10 @@ target-version = "py311"
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
 ignore = ["B008"]
+
+[tool.ruff.lint.per-file-ignores]
+# vendored upstream code (netprint): its own lint config allows full-width punctuation
+"router_cli/_vendor/**" = ["RUF001"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

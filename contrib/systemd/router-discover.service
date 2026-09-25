@@ -1,0 +1,12 @@
+[Unit]
+Description=Sweep the LAN into the device inventory (router-cli discover; never polls the router)
+ConditionPathExists=%h/.local/bin/router
+
+[Service]
+Type=oneshot
+# Optional: read Home Assistant's device registry (read-only) as extra evidence.
+# Environment=ROUTER_CLI_HA_CONFIG=%h/homeassistant
+ExecStart=%h/.local/bin/router discover --json
+StandardOutput=null
+TimeoutStartSec=4min
+Nice=10

@@ -10,12 +10,14 @@ from __future__ import annotations
 from .._errors import NetworkError, RouterCliError, unknown_item
 from ..http import Transport
 from .base import BaseDriver, Capability
+from .miwifi import MiWiFi
 from .openwrt import OpenWrt
 from .ubee_evw32c import UbeeEVW32C
 
 DRIVERS: dict[str, type[BaseDriver]] = {
     UbeeEVW32C.name: UbeeEVW32C,
     OpenWrt.name: OpenWrt,
+    MiWiFi.name: MiWiFi,
 }
 
 ALIASES: dict[str, str] = {
@@ -25,6 +27,7 @@ ALIASES: dict[str, str] = {
     "evw32c-0n": "ubee_evw32c",
     "evw32c-0s": "ubee_evw32c",
     "luci": "openwrt",
+    "xiaomi": "miwifi",
 }
 
 

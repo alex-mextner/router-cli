@@ -60,7 +60,13 @@ def run(argv: list[str]) -> int:
     driver = C.track(cls(transport, None), args)
     driver.login(user, password)
     where, path = credentials.store(
-        base, name, user, password, prefer=args.store, make_default=not args.no_default
+        base,
+        name,
+        user,
+        password,
+        prefer=args.store,
+        # An access point / mesh node is never the router the other commands should talk to.
+        make_default=not args.no_default and not cls.access_point,
     )
     result = {
         "host": credentials.host_key(base),

@@ -1,12 +1,20 @@
-"""scan — find the web UIs running on LAN devices: port, title, server, favicon.
+"""scan — find the web UIs running on LAN devices: port, title, server, favicon, health.
 
 Two passes, both concurrent and on short timeouts so a whole home network takes seconds:
 
-1. TCP connect to a list of popular web ports on every target.
-2. For each open port, one HTTP(S) GET of ``/`` (HTTPS first on the usual TLS ports,
+1. TCP connect to a list of popular web ports on every target, plus the non-web
+   *fingerprint* ports the device classifier looks at (ESPHome's 6053, iOS's 62078, Tuya's
+   6668, ...: connect only, nothing is sent), plus every port a web service was found on
+   before.
+2. For each open web port, one HTTP(S) GET of ``/`` (HTTPS first on the usual TLS ports,
    certificate NOT verified — LAN devices use self-signed certificates), reading at most
-   256 KiB: ``<title>``, the ``Server`` header, and the favicon (``<link rel=icon>`` or
-   ``/favicon.ico``) as a ``data:`` URL capped at 32 KiB.
+   256 KiB: ``<title>``, the ``Server`` header, well-known product markers in the body, and
+   the favicon (``<link rel=icon>`` or ``/favicon.ico``) as a ``data:`` URL capped at 32 KiB.
+
+Every service carries its health: ``reachable`` (an HTTP answer of any status came back),
+``http_status`` and ``error`` (``refused``, ``timeout``, ``tls``, ``reset``, ``unreachable``,
+``http``). A service seen before that no longer answers is kept with ``reachable: false`` so
+a dashboard can show it as down instead of silently dropping it.
 
 Only plain GETs of ``/`` and the favicon are ever sent to a device.
 """
@@ -15,6 +23,8 @@ from __future__ import annotations
 
 import base64
 import concurrent.futures
+import errno
+import hashlib
 import html
 import http.client
 import re
@@ -25,17 +35,27 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
+from ._vendor.netprint import find_markers, fingerprint_ports
+
 DEFAULT_PORTS = (
     80, 443, 8080, 8443, 8000, 8001, 8008, 8081, 8088, 8123, 8888, 9000, 9090, 5000, 5001,
     3000, 32400, 1880, 6052, 7125, 4408, 9999, 631, 8200, 49152, 8096, 8006, 9443, 10000,
     2283, 8384, 5601, 3001, 8989, 7878, 9117, 8086, 4533,
 )  # fmt: skip
 TLS_FIRST = frozenset({443, 8443, 5001, 9443, 8006, 10000})
+# Ports that never speak HTTP (or whose HTTP answer says nothing): connect-only.
+NOT_HTTP = frozenset({22, 53, 139, 445, 515, 548, 554, 1883, 3389, 5555, 6053, 6668, 8883,
+                      9100, 62078, 55443, 1400, 1961, 8554, 5357, 2869, 7680})  # fmt: skip
 MAX_BODY = 256 * 1024
 MAX_ICON = 32 * 1024
 _TITLE = re.compile(r"<title[^>]*>(.*?)</title>", re.I | re.S)
 _LINK = re.compile(r"<link\b[^>]*>", re.I)
 _ATTR = re.compile(r"""(\w[\w-]*)\s*=\s*("([^"]*)"|'([^']*)'|([^\s>]+))""")
+
+
+def fingerprint_only_ports() -> tuple[int, ...]:
+    """Fingerprint ports that are not already web ports."""
+    return tuple(p for p in fingerprint_ports() if p not in DEFAULT_PORTS)
 
 
 @dataclass
@@ -48,6 +68,10 @@ class Service:
     favicon_data_url: str | None = None
     checked_at: str = ""
     status: int | None = None
+    reachable: bool | None = True
+    error: str | None = None
+    markers: list[str] = field(default_factory=list)
+    favicon_hash: str | None = None
 
     def to_json(self) -> dict[str, Any]:
         return {
@@ -58,6 +82,11 @@ class Service:
             "server": self.server,
             "favicon_data_url": self.favicon_data_url,
             "checked_at": self.checked_at,
+            "reachable": self.reachable,
+            "http_status": self.status,
+            "error": self.error,
+            "markers": self.markers,
+            "favicon_hash": self.favicon_hash,
         }
 
 
@@ -73,12 +102,38 @@ def _now() -> str:
     return datetime.now(UTC).replace(microsecond=0).isoformat()
 
 
-def port_open(ip: str, port: int, timeout: float) -> bool:
+def classify_error(exc: BaseException) -> str:
+    """A short, stable reason for a failed connection / request."""
+    if isinstance(exc, ssl.SSLError):
+        return "tls"
+    if isinstance(exc, ConnectionRefusedError):
+        return "refused"
+    if isinstance(exc, ConnectionResetError | BrokenPipeError | ConnectionAbortedError):
+        return "reset"
+    if isinstance(exc, TimeoutError):
+        return "timeout"
+    if isinstance(exc, http.client.HTTPException):
+        return "http"
+    if isinstance(exc, OSError) and exc.errno in (
+        errno.EHOSTUNREACH,
+        errno.ENETUNREACH,
+        errno.EHOSTDOWN,
+    ):
+        return "unreachable"
+    return "error"
+
+
+def port_state(ip: str, port: int, timeout: float) -> str | None:
+    """None if a TCP connect succeeds, else why it did not."""
     try:
         with socket.create_connection((ip, port), timeout=timeout):
-            return True
-    except OSError:
-        return False
+            return None
+    except OSError as exc:
+        return classify_error(exc)
+
+
+def port_open(ip: str, port: int, timeout: float) -> bool:
+    return port_state(ip, port, timeout) is None
 
 
 def _context() -> ssl.SSLContext:
@@ -186,31 +241,73 @@ def favicon(scheme: str, ip: str, port: int, page: str, timeout: float) -> str |
     return f"data:{ctype};base64,{base64.b64encode(body).decode('ascii')}"
 
 
+def favicon_hash(data_url: str | None) -> str | None:
+    """md5 hex of the favicon bytes (what netprint's ``favicon`` rules match)."""
+    if not data_url or ";base64," not in data_url:
+        return None
+    try:
+        raw = base64.b64decode(data_url.split(";base64,", 1)[1], validate=False)
+    except ValueError:
+        return None
+    return hashlib.md5(raw, usedforsecurity=False).hexdigest()
+
+
+def _url(scheme: str, ip: str, port: int) -> str:
+    default_port = 443 if scheme == "https" else 80
+    return f"{scheme}://{ip}/" if port == default_port else f"{scheme}://{ip}:{port}/"
+
+
 def probe_http(ip: str, port: int, timeout: float, with_icon: bool = True) -> Service | None:
+    """The web service on an open port, or None if nothing there speaks HTTP(S)."""
     order = ("https", "http") if port in TLS_FIRST else ("http", "https")
     for scheme in order:
         try:
             status, headers, body = _get(scheme, ip, port, "/", timeout, MAX_BODY)
-        except ssl.SSLError:
-            continue
         except (OSError, http.client.HTTPException):
             continue
         text = _decode(body, headers)
-        default_port = 443 if scheme == "https" else 80
-        url = f"{scheme}://{ip}/" if port == default_port else f"{scheme}://{ip}:{port}/"
         service = Service(
             port=port,
             scheme=scheme,
-            url=url,
+            url=_url(scheme, ip, port),
             title=title_of(text),
             server=headers.get("server"),
             checked_at=_now(),
             status=status,
+            reachable=True,
+            markers=find_markers(text),
         )
         if with_icon:
             service.favicon_data_url = favicon(scheme, ip, port, text, timeout)
+            service.favicon_hash = favicon_hash(service.favicon_data_url)
         return service
     return None
+
+
+def check_service(scheme: str, ip: str, port: int, timeout: float) -> tuple[int | None, str | None]:
+    """(HTTP status, None) if the service answers, (None, reason) if not. One GET of ``/``."""
+    try:
+        status, _headers, _body = _get(scheme, ip, port, "/", timeout, 4096)
+    except (OSError, http.client.HTTPException) as exc:
+        return None, classify_error(exc)
+    return status, None
+
+
+def _gone(known: dict[str, Any], reason: str) -> Service:
+    return Service(
+        port=int(known["port"]),
+        scheme=str(known.get("scheme") or "http"),
+        url=str(known.get("url") or ""),
+        title=known.get("title"),
+        server=known.get("server"),
+        favicon_data_url=known.get("favicon_data_url"),
+        checked_at=_now(),
+        status=None,
+        reachable=False,
+        error=reason,
+        markers=list(known.get("markers") or []),
+        favicon_hash=known.get("favicon_hash"),
+    )
 
 
 def scan_hosts(
@@ -220,22 +317,37 @@ def scan_hosts(
     http_timeout: float = 3.0,
     workers: int = 64,
     with_icons: bool = True,
+    extra_ports: tuple[int, ...] = (),
+    known: dict[str, list[dict[str, Any]]] | None = None,
 ) -> list[HostResult]:
+    """Scan every (ip, mac) target. ``extra_ports`` are connect-only; ``known`` maps an ip to
+    the services found on it before, which are re-checked and reported as down if gone."""
+    known = known or {}
     results = {ip: HostResult(ip=ip, mac=mac) for ip, mac in targets}
+    reasons: dict[tuple[str, int], str] = {}
+    web_ports = set(ports)
+    plan = {
+        (ip, port)
+        for ip in results
+        for port in (*ports, *extra_ports, *(int(s["port"]) for s in known.get(ip, [])))
+    }
     with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
         futures = {
-            pool.submit(port_open, ip, port, connect_timeout): (ip, port)
-            for ip in results
-            for port in ports
+            pool.submit(port_state, ip, port, connect_timeout): (ip, port) for ip, port in plan
         }
         for future in concurrent.futures.as_completed(futures):
             ip, port = futures[future]
-            if future.result():
+            reason = future.result()
+            if reason is None:
                 results[ip].open_ports.append(port)
+            else:
+                reasons[(ip, port)] = reason
         http_futures = {
             pool.submit(probe_http, r.ip, port, http_timeout, with_icons): (r.ip, port)
             for r in results.values()
             for port in r.open_ports
+            if port not in NOT_HTTP
+            and (port in web_ports or any(int(s["port"]) == port for s in known.get(r.ip, [])))
         }
         for http_future in concurrent.futures.as_completed(http_futures):
             ip, _port = http_futures[http_future]
@@ -243,6 +355,11 @@ def scan_hosts(
             if service is not None:
                 results[ip].services.append(service)
     for r in results.values():
-        r.open_ports.sort()
+        found = {s.port for s in r.services}
+        for old in known.get(r.ip, []):
+            port = int(old["port"])
+            if port not in found:
+                r.services.append(_gone(old, reasons.get((r.ip, port), "http")))
+        r.open_ports = sorted(set(r.open_ports))
         r.services.sort(key=lambda s: s.port)
     return list(results.values())
