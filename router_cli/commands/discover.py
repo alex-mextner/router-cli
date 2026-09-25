@@ -452,7 +452,11 @@ def discover(args: Any) -> dict[str, Any]:
                 known_names.setdefault(smac, []).extend(n for n, _src in sighting.names)
             ha_facts = ha_registry.facts_by_mac(ha_devices, inv.ip_to_mac(), known_names)
             for hmac, value in ha_facts.items():
-                sight(hmac, hmac in present).facts["ha"] = value
+                ha_sighting = sight(hmac, hmac in present)
+                ha_sighting.facts["ha"] = value
+                for ha_name in (value.get("name"), value.get("title")):
+                    if ha_name:  # so `router scan --ip "Snapmaker U1"` works too
+                        ha_sighting.names.append((str(ha_name), "ha"))
             ha_count = len(ha_facts)
             inv.drop_facts("ha", ha_facts)
         if conflict_macs:
