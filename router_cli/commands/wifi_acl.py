@@ -12,6 +12,7 @@ from .wifi import band_arg, banded
 
 NAME = "wifi-acl"
 SUMMARY = "show/set Wi-Fi MAC access control (mode and MAC list)"
+COMPLETION_PROBES = ("add",)  # add/rm/clear live on a second parser
 
 
 def _list_for(driver: BaseDriver, args: argparse.Namespace) -> str:

@@ -126,6 +126,36 @@ else
   fi
 fi
 
+# ── shell completion ──────────────────────────────────────────────────────────
+# User-level locations only (no sudo). bash-completion loads the bash file lazily from
+# ~/.local/share/bash-completion/completions; zsh needs its directory in $fpath; fish reads
+# ~/.config/fish/completions. zsh/fish files are written only when that shell is installed.
+# The scripts call `router completion complete` on TAB; they never contact the router.
+install_completion() {
+  local shell="$1" dest="$2"
+  mkdir -p "$(dirname "$dest")"
+  if "$ROUTER_BIN" completion "$shell" > "$dest.tmp"; then
+    mv "$dest.tmp" "$dest"
+    say "router: $shell completion -> $dest"
+  else
+    rm -f "$dest.tmp"
+    warn "  WARNING: could not write $shell completion to $dest"
+  fi
+}
+if [[ -n "${ROUTER_NO_COMPLETION:-}" ]]; then
+  say "router: skipping shell completion (ROUTER_NO_COMPLETION is set)."
+else
+  DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
+  install_completion bash "${BASH_COMPLETION_USER_DIR:-$DATA_HOME/bash-completion}/completions/router"
+  if command -v zsh >/dev/null 2>&1; then
+    install_completion zsh "$DATA_HOME/zsh/site-functions/_router"
+    say "        zsh: make sure $DATA_HOME/zsh/site-functions is in \$fpath before compinit"
+  fi
+  if command -v fish >/dev/null 2>&1; then
+    install_completion fish "${XDG_CONFIG_HOME:-$HOME/.config}/fish/completions/router.fish"
+  fi
+fi
+
 # ── done ──────────────────────────────────────────────────────────────────────
 if [[ -z "$RESOLVED" ]]; then
   warn ""

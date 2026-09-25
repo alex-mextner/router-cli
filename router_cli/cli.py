@@ -46,7 +46,7 @@ _COMMAND_COLUMN = 16
 _EXAMPLE_COLUMN = 44
 
 _GROUPS = (
-    ("setup", ("login", "logout", "doctor", "detect", "drivers", "install-skill")),
+    ("setup", ("login", "logout", "doctor", "detect", "drivers", "install-skill", "completion")),
     ("look", ("status", "devices", "leases", "wan", "cm", "telephony")),
     ("inventory", ("inventory", "scan", "alias", "oui")),
     ("change", ("reserve", "unreserve", "dhcp", "lan", "wifi", "wifi-acl", "wps", "port-forward")),

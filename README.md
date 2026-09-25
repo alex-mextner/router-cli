@@ -25,7 +25,17 @@ router doctor       # what works, what does not, and how to fix it
 Python 3.11+ and nothing else: the package has zero third-party dependencies (HTTP is
 `urllib`, HTML is `html.parser`, storage is `sqlite3`). The installer also registers
 `router` as an agent skill so coding agents find it on their own (`ROUTER_NO_SKILL=1` skips
-that).
+that), and installs shell completion for bash (and zsh / fish when present;
+`ROUTER_NO_COMPLETION=1` skips it):
+
+```bash
+router completion bash > ~/.local/share/bash-completion/completions/router
+router completion zsh  > ~/.local/share/zsh/site-functions/_router   # a dir in your $fpath
+router completion fish > ~/.config/fish/completions/router.fish
+```
+
+Completion covers commands, verbs, flags and their choices, and device names, MACs and IPs
+from the local inventory database — pressing TAB never sends anything to the router.
 
 ## What it actually fixes
 
