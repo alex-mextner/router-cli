@@ -166,6 +166,18 @@ class BaseDriver:
     def session_active(self) -> bool:
         return True
 
+    def end_session(self) -> bool:
+        """End an admin session THIS driver opened (no-op if it never logged in).
+
+        Called by the CLI after every command unless ``--keep-session``. Returns whether a
+        logout was sent. Best effort: a failure here never fails the command.
+        """
+        return False
+
+    def list_is_mac(self, name: str) -> bool:
+        """Whether the named list holds MAC addresses (so values take device selectors)."""
+        return False
+
     # ── reads ────────────────────────────────────────────────────────────────
     def info(self) -> RouterInfo:
         return RouterInfo(driver=self.name, host=self.bare_host)

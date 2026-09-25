@@ -1,8 +1,8 @@
 """logout — forget a router's stored credentials.
 
-This does NOT end the router's admin session: on the Ubee that session is global, and
-logging it out would log out every other client (Home Assistant included). It only removes
-what `router login` stored on this machine.
+It only removes what `router login` stored on this machine; it sends nothing to the router.
+(Admin sessions need no separate logout: every command already closes a session it had to
+open when it ends, unless it was run with ``--keep-session``.)
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ from .. import credentials
 from . import _common as C
 
 NAME = "logout"
-SUMMARY = "forget stored credentials for a router (the router session is left alone)"
+SUMMARY = "forget stored credentials for a router (nothing is sent to the router)"
 
 
 def run(argv: list[str]) -> int:

@@ -38,7 +38,56 @@ def add_router_args(p: argparse.ArgumentParser) -> None:
     g.add_argument("--driver", help="driver name (default: saved profile, then auto-detect)")
     g.add_argument("--user", help="admin user (default: saved profile, then the driver's default)")
     g.add_argument("--timeout", type=float, default=8.0, help="HTTP timeout in seconds (default 8)")
+    add_session_arg(g)
     p.add_argument("--json", action="store_true", help="machine-readable JSON output")
+
+
+def add_session_arg(g: argparse._ActionsContainer) -> None:
+    g.add_argument(
+        "--keep-session",
+        action="store_true",
+        help="do not log out of the router afterwards (default: a session router-cli had to "
+        "open is closed when the command ends; env ROUTER_CLI_KEEP_SESSION=1)",
+    )
+
+
+# ── session hygiene ──────────────────────────────────────────────────────────
+# Every driver a command opens is remembered here; the dispatcher calls end_sessions()
+# when the command ends (also on error), which logs out of any admin session a driver had
+# to open — unless --keep-session / ROUTER_CLI_KEEP_SESSION asked otherwise.
+_OPENED: list[BaseDriver] = []
+_KEEP_SESSION = False
+
+
+def track(driver: BaseDriver, args: argparse.Namespace | None = None) -> BaseDriver:
+    global _KEEP_SESSION
+    if args is not None and getattr(args, "keep_session", False):
+        _KEEP_SESSION = True
+    _OPENED.append(driver)
+    return driver
+
+
+def keep_session_requested() -> bool:
+    return _KEEP_SESSION or os.environ.get("ROUTER_CLI_KEEP_SESSION", "") not in ("", "0")
+
+
+def end_sessions() -> list[str]:
+    """Log out of every admin session a driver of this command opened; return their hosts."""
+    global _KEEP_SESSION
+    closed: list[str] = []
+    try:
+        if keep_session_requested():
+            return closed
+        for driver in _OPENED:
+            try:
+                if driver.end_session():
+                    closed.append(driver.bare_host)
+            except Exception:  # logging out is best effort, never a failure
+                continue
+        return closed
+    finally:
+        _OPENED.clear()
+        _KEEP_SESSION = False
 
 
 def add_write_args(p: argparse.ArgumentParser) -> None:
@@ -110,7 +159,7 @@ def open_driver(args: argparse.Namespace) -> BaseDriver:
         secret = credentials.password_for(base, name, user)
         return (user, secret) if secret else None
 
-    return cls(transport, creds)
+    return track(cls(transport, creds), args)
 
 
 # ── output ───────────────────────────────────────────────────────────────────

@@ -124,7 +124,14 @@ def _dispatch(args: list[str]) -> int:
         return EXIT_OK
     if head not in catalog:
         raise unknown_item("command", head, list(catalog))
-    return _load(catalog[head][0])(args[1:])
+    try:
+        return _load(catalog[head][0])(args[1:])
+    finally:
+        # Session hygiene: close any router admin session this command had to open
+        # (success or failure), unless --keep-session. See commands/_common.end_sessions.
+        from .commands import _common
+
+        _common.end_sessions()
 
 
 def _load(module_name: str) -> _RunFn:

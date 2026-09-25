@@ -38,6 +38,7 @@ def run(argv: list[str]) -> int:
     )
     p.add_argument("--password-stdin", action="store_true", help="read the password from stdin")
     p.add_argument("--no-default", action="store_true", help="do not make this the default router")
+    C.add_session_arg(p)
     p.add_argument("--json", action="store_true")
     args = p.parse_args(argv)
 
@@ -54,7 +55,9 @@ def run(argv: list[str]) -> int:
     if not password:
         raise UsageError(what="empty password", why="nothing was typed", how="try again")
 
-    driver = cls(transport, None)
+    # Tracked like any driver: the session this check opens is closed again afterwards
+    # (the admin session of some routers is open to the whole LAN) unless --keep-session.
+    driver = C.track(cls(transport, None), args)
     driver.login(user, password)
     where, path = credentials.store(
         base, name, user, password, prefer=args.store, make_default=not args.no_default

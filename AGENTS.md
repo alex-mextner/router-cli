@@ -20,7 +20,9 @@ fully typed (mypy strict), zero third-party runtime dependencies.
 | `commands/` | one file per subcommand (`NAME`, `SUMMARY`, `run(argv) -> int`); `_`-prefixed files are helpers |
 | `commands/_common.py` | shared options, router/driver/user resolution, output, and `run_plan` — the ONLY path a write takes |
 | `commands/_area.py`, `_lists.py` | the generic `show / keys / set k=v` and `show / add / rm / clear` commands |
-| `http.py` | `HttpRequest` (read/login/write kinds), `HttpTransport` (urllib, write gate, path guard), `DryRunTransport`, request rendering + redaction |
+| `device_selector.py` | device arguments: MAC (any format) / current IP / name or unique prefix, resolved in the local DB |
+| `completion.py` | shell completion engine (introspects each command's argparse parser) + bash/zsh/fish scripts |
+| `http.py` | `HttpRequest` (read/login/logout/write kinds), `HttpTransport` (urllib, write gate, path guard), `DryRunTransport`, request rendering + redaction |
 | `htmlform.py` | browser-accurate HTML form model (successful controls), tables, embedded `var x = '{json}'` blobs |
 | `drivers/base.py` | `Capability`, `BaseDriver` (unsupported defaults), `WritePlan`/`Deferred`, `execute` |
 | `drivers/ubee_evw32c.py` | the Ubee driver: session handling, parsers, write plans |
@@ -38,9 +40,20 @@ fully typed (mypy strict), zero third-party runtime dependencies.
 
 ## Invariants
 
-- **No request ever GETs a path containing logout/reboot/reset/restore/factory/default/
+- **No read ever GETs a path containing logout/reboot/reset/restore/factory/default/
   upgrade/backup.** `http.check_path` enforces it for every transport, including test fakes.
-  On the Ubee the admin session is global: `logout.asp` would log out Home Assistant too.
+  The only exception is a `kind="logout"` request (`BaseDriver.end_session`), which may name
+  `logout` and nothing else from that list.
+- **Close what you open.** On the Ubee the admin session is global to the LAN (an open
+  session lets anyone use the admin pages). A driver that had to log in logs out when the
+  command ends: every driver goes through `_common.open_driver`/`_common.track`, and
+  `cli._dispatch` calls `_common.end_sessions()` in a `finally`. A session the driver found
+  already open is someone else's and is left alone. `--keep-session` /
+  `ROUTER_CLI_KEEP_SESSION=1` opts out.
+- **Device arguments are selectors.** Anything that takes a device (`reserve`, `unreserve`,
+  `alias`, `scan --ip`, `oui`, MAC lists) resolves it with `device_selector` — MAC in any
+  format, current IP, or a name/unique prefix — against the local DB only, and gives the
+  positional `metavar="DEVICE"` so shell completion offers inventory devices.
 - **Drivers never send writes.** A write method returns a `WritePlan`; only
   `commands/_common.run_plan` executes one, and only after `--dry-run` was not given and,
   for `destructive` plans, `--yes` was. `HttpTransport` refuses `kind="write"` unless

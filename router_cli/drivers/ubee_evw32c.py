@@ -5,12 +5,15 @@ HOW THIS FIRMWARE WORKS (and why the driver is shaped like this)
       cookie: the admin session is GLOBAL to the box. While anyone is logged in, every page
       answers every LAN client; when nobody is, every page answers with the login page
       (title "Residential Gateway Login"). ``/`` is ALWAYS the login page, so session checks
-      GET a protected page instead. Home Assistant's ubee integration logs in every 30 s, so
-      in practice a session is usually already open and the driver never needs to log in.
+      GET a protected page instead. An open session is therefore an open door: anyone on
+      the LAN can use the admin pages until somebody logs out or it times out.
     - When a page comes back as the login page and credentials are stored, the driver logs
       in once and retries; without credentials it tells the user to run ``router login``.
-    - Never GET ``logout.asp``: it ends the one global session for everybody (including Home
-      Assistant). The transport's path guard refuses it regardless.
+    - SESSION HYGIENE: when the driver had to log in, ``end_session`` GETs ``logout.asp``
+      afterwards (the CLI calls it after every command unless ``--keep-session``). When a
+      session was already open (someone else logged in), the driver reads through it and
+      leaves it alone — it only closes what it opened. ``logout.asp`` is sent only as a
+      ``kind="logout"`` request; every other read of it is still refused by the path guard.
     - Settings pages are plain HTML forms posting to ``/goform/<Page>``; see
       :mod:`.ubee_areas` for the page-by-page map. Writes are computed from the live form
       (see :mod:`router_cli.htmlform`), never from a remembered field list.
@@ -31,6 +34,7 @@ from .. import htmlform
 from .._errors import (
     MissingTargetError,
     NotLoggedInError,
+    RouterCliError,
     RouterError,
     UsageError,
     unknown_item,
@@ -56,6 +60,7 @@ from .base import BaseDriver, Capability, Deferred, SettingSpec, WritePlan
 
 LOGIN_TITLE = "Residential Gateway Login"
 LOGIN_PATH = "/goform/login"
+LOGOUT_PATH = "/logout.asp"
 SESSION_PAGE = "UbeeSysInfo.asp"
 STATIC_SLOTS = 8
 _EMPTY_MACS = {"00:00:00:00:00:00", ""}
@@ -131,7 +136,8 @@ class UbeeEVW32C(BaseDriver):
         "port-trigger": "port triggering rules (remove/clear only)",
     }
     notes: ClassVar[list[str]] = [
-        "the admin session is global to the router; never GET logout.asp",
+        "the admin session is global to the router (anyone on the LAN can use it); the "
+        "driver logs out after a command that had to log in (--keep-session to stay)",
         "LAN clients carry no host names; only associated Wi-Fi stations do",
         "static leases have no name field: --name is stored as a local alias",
         "port-forward add is a two-step flow whose edit form was not captured: best effort",
@@ -140,6 +146,7 @@ class UbeeEVW32C(BaseDriver):
     def __init__(self, transport: Transport, credentials: Any = None) -> None:
         super().__init__(transport, credentials)
         self._relogged = False
+        self._opened_session = False
 
     # ── detection / session ──────────────────────────────────────────────────
     @classmethod
@@ -168,6 +175,9 @@ class UbeeEVW32C(BaseDriver):
                 secret_fields=frozenset({"loginPassword"}),
             )
         )
+        if not self._is_login(response):
+            # A session is (now) open because of this POST — ours to close afterwards.
+            self._opened_session = True
         if self._is_login(response) or not self.session_active():
             raise NotLoggedInError(
                 what="the router rejected the login",
@@ -177,6 +187,19 @@ class UbeeEVW32C(BaseDriver):
 
     def session_active(self) -> bool:
         return not self._is_login(self.transport.get("/" + SESSION_PAGE))
+
+    def end_session(self) -> bool:
+        if not self._opened_session:
+            return False
+        self._opened_session = False
+        try:
+            self.transport.send(HttpRequest("GET", LOGOUT_PATH, kind="logout"))
+        except RouterCliError:
+            return False  # best effort: the router times the session out by itself
+        return True
+
+    def list_is_mac(self, name: str) -> bool:
+        return name in A.ACL_LISTS or (name in A.LISTS and A.LISTS[name].kind == "mac")
 
     @staticmethod
     def _is_login(text: str) -> bool:

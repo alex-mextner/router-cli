@@ -60,11 +60,17 @@ Content-Type: application/x-www-form-urlencoded
 Changes that can cut you off or expose a device (Wi-Fi, LAN address, DHCP off, port
 forwards, DMZ, reboot) also need `--yes`. Passwords and keys are redacted in every output unless `--show-secrets`.
 
-**Things you must never do by accident, you cannot do at all.** No request ever touches a
+**Things you must never do by accident, you cannot do at all.** No read ever touches a
 path containing `logout`, `reboot`, `reset`, `restore`, `factory`, `default`, `upgrade` or
-`backup` on a GET. That matters more than it sounds: the Ubee's admin session is *global*,
-so fetching `logout.asp` logs out everyone — including Home Assistant. There is no factory
-reset command.
+`backup` on a GET. There is no factory reset command. The one deliberate exception is the
+session logout below, sent as its own request kind that may name `logout` and nothing else.
+
+**It closes the door behind itself.** The Ubee's admin session is *global*: while anyone is
+logged in, every device on the LAN can open the admin pages without a password. So when a
+command had to log in, `router` logs out again when it ends (success or error). When a
+session was already open — someone else is logged in — it reads through that session and
+leaves it alone. `--keep-session` (or `ROUTER_CLI_KEEP_SESSION=1`) skips the logout, e.g.
+for a burst of commands.
 
 **One JSON shape for every router.** Devices, leases, status and the inventory come out the
 same from an Ubee cable gateway and an OpenWrt box, so a dashboard or an agent is written
@@ -181,12 +187,13 @@ The directory is 0700, the file 0600, and `router` refuses to read the file if i
 group- or world-readable. `default` picks the router when `--host` is omitted. You may write
 the file by hand. `router login --store keyring` puts the password in the OS keyring instead
 (Secret Service via `secret-tool`, the macOS keychain, or Windows Credential Manager); a
-password in the file always wins. `router logout` forgets the stored credentials — it does not
-touch the router's session.
+password in the file always wins. `router logout` forgets the stored credentials; it sends
+nothing to the router.
 
-Drivers log in again by themselves when the session is gone. On the Ubee the admin session is
-global, so if anything else (Home Assistant's ubee integration logs in every 30 s) is logged
-in, reads work without any stored credentials.
+Drivers log in by themselves when there is no session, and log out again when the command
+ends (see "It closes the door behind itself" above; `--keep-session` keeps it open). On the
+Ubee the admin session is global, so while anything else is logged in, reads work without
+any stored credentials — and router-cli leaves that other session alone.
 
 Routers with exotic logins (captchas, JavaScript-computed tokens) could be supported by
 capturing the session with a real browser (e.g. `agent-browser` or Chrome) — that would be the

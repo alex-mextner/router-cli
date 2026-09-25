@@ -1,12 +1,15 @@
 """http — the only door between router-cli and a router's web server.
 
-ONE REQUEST TYPE, THREE KINDS
+ONE REQUEST TYPE, FOUR KINDS
     Every request a driver makes is an :class:`HttpRequest` with a ``kind``:
 
     ``read``   a GET, or a POST that only reads (OpenWrt's ``/ubus`` JSON-RPC is POST-only
                even for reads). Always allowed, subject to the path guard.
     ``login``  the form or RPC login. Allowed, because a driver has to be able to get a
                session back, and it changes nothing on the router.
+    ``logout`` ending the admin session the driver itself opened (``end_session``). The
+               ONLY request allowed to name a logout page; every other guarded word still
+               applies to it.
     ``write``  anything that changes router state. Refused unless the transport was built
                with ``allow_writes=True`` — which the CLI only does after ``--dry-run`` was
                NOT given and, for destructive writes, ``--yes`` WAS.
@@ -15,7 +18,8 @@ THE PATH GUARD
     Some pages act on a plain GET. On consumer gateways ``logout.asp`` ends the (often
     global) admin session and pages named for reboot, reset, restore, factory defaults,
     upgrade or backup can do far worse. No read ever touches a path containing one of those
-    words; there is no flag to turn that off.
+    words; there is no flag to turn that off. The single exception is a ``kind="logout"``
+    request, which may contain "logout" (and nothing else from the list).
 
 DRY RUN
     :class:`DryRunTransport` passes reads (and logins) through to the real router, because a
@@ -36,7 +40,7 @@ from typing import Any, Literal, Protocol
 
 from ._errors import NetworkError, RouterError, SafetyError
 
-Kind = Literal["read", "login", "write"]
+Kind = Literal["read", "login", "logout", "write"]
 
 FORM = "application/x-www-form-urlencoded"
 JSON = "application/json"
@@ -144,10 +148,16 @@ class Transport(Protocol):
     def send(self, request: HttpRequest) -> str: ...
 
 
-def check_path(path: str) -> None:
-    """Refuse any GET whose path could act on the router (logout, reboot, reset, ...)."""
+def check_path(path: str, allow_logout: bool = False) -> None:
+    """Refuse any GET whose path could act on the router (logout, reboot, reset, ...).
+
+    ``allow_logout`` (only for ``kind="logout"`` requests) lets "logout" through; every
+    other word stays refused.
+    """
     bare = urllib.parse.urlsplit(path).path.lower()
     for word in DANGEROUS_PATH_WORDS:
+        if allow_logout and word == "logout":
+            continue
         if word in bare:
             raise SafetyError(
                 what=f"refusing to request {path!r}",
@@ -181,7 +191,7 @@ class HttpTransport:
 
     def send(self, request: HttpRequest) -> str:
         if request.method == "GET":
-            check_path(request.path)
+            check_path(request.path, allow_logout=request.kind == "logout")
         if request.kind == "write" and not self.allow_writes:
             raise SafetyError(
                 what=f"refusing to send a write to {request.path}",
