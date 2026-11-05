@@ -125,7 +125,7 @@ router wifi set --band 2g security=wpa-personal psk=... --dry-run --yes
 
 | Command | What |
 | --- | --- |
-| `lan` | LAN address, DNS handed to clients, domain |
+| `lan` | LAN address, DNS handed to clients, domain (Ubee: written DNS may be put back, see [docs/ubee-lan-dns.md](docs/ubee-lan-dns.md)) |
 | `dhcp` | DHCP server on/off, pool, lease time |
 | `wan` | WAN address, gateway, DNS (read-only) |
 | `wifi` | radios, SSIDs, mode, channel, width, power, security (`--band 2g/5g`) |
